@@ -1,0 +1,7 @@
+.DS_Store
+*.log
+# private — never published (question banks, SQL, student data, Apps Script with secrets)
+banks/
+supabase/
+apps-script/
+private/
