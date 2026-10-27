@@ -42,11 +42,19 @@ const ERR = {
   pick_a_subject: 'Pick a subject.',
   bad_action: 'That action is not allowed.',
   not_found: 'Not found — refresh the page.',
+  prac_hours: 'Practical papers can be started only between 8 AM and 2 PM, so you finish the same day.',
+  prac_running: 'You already have a practical paper in progress. Submit it first.',
+  prac_closed: 'This practical is closed.',
+  prac_not_submitted: 'The student has not submitted yet.',
+  spec_locked: 'Your specialisation is already chosen. Ask the Academic Head to change it.',
+  pick_a_spec: 'Pick a specialisation.',
+  bad_score: 'A score is above the maximum for that criterion.',
 };
 const STATE_TXT = {
   book: 'Book your exam date first.', requested: 'Your date is waiting for approval.', scheduled: "Your exam time hasn't started yet.",
   sequence: 'Finish the earlier subject in your course first.', assignments: 'Complete the required assignments first.',
   locked: 'This exam is locked.', done: 'You have used all attempts.', missed: 'You missed your slot — pick a new date.',
+  spec: 'Choose your specialisation first.', theory: 'Pass the required theory exams first.',
   blocked: 'This exam is on hold. Please meet the Academic Head.', exempt: 'This subject is already marked complete.', preparing: 'This paper is still being prepared.',
 };
 export function errText(e) {

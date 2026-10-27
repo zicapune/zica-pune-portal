@@ -1,12 +1,13 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG } from './common.js';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG } from './common.js?v=5';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
 const app = $('#app');
 const cam = new Cam();
 let ME = null;
+let PR = {};            // practical papers + specialisations per course
 let RUN = null;           // running exam controller
 const api = (fn, args = {}) => (DEMO ? mock(fn, args) : rpc(fn, args));
 
@@ -33,6 +34,7 @@ async function boot() {
     const first = !sessionStorage.getItem('zp_in');
     ME = await api(first ? 'exam_login' : 'exam_me', first ? { p_device: device() } : {});
     sessionStorage.setItem('zp_in', '1');
+    if (ME.student) PR = (await api('exam_prac_me').catch(() => ({}))) || {};
   } catch (e) { return fatal(errText(e)); }
   if (!ME.student) return notRegistered();
   if (ME.student.blocked) return fatal('Your account is on hold. Please contact the Academic Head.');
@@ -86,7 +88,11 @@ function notRegistered() {
   };
 }
 
-async function refresh() { if (!DEMO) ME = await api('exam_me'); }
+async function refresh() {
+  if (DEMO) return;
+  const [me, pr] = await Promise.all([api('exam_me'), api('exam_prac_me').catch(() => ({}))]);
+  ME = me; PR = pr || {};
+}
 
 function route() {
   if (RUN) return;
@@ -95,6 +101,7 @@ function route() {
   if (p[0] === 'c' && p[1]) return courseView(decodeURIComponent(p[1]));
   if (p[0] === 's' && p[2]) return setupView(decodeURIComponent(p[1]), decodeURIComponent(p[2]));
   if (p[0] === 'a' && p[2]) return assignView(decodeURIComponent(p[1]), decodeURIComponent(p[2]));
+  if (p[0] === 'p' && p[1]) return pracView(p[1]);
   if (p[0] === 'r' && p[1]) return resultView(p[1]);
   if (p[0] === 'review' && p[1]) return reviewView(p[1]);
   return homeView();
@@ -169,12 +176,17 @@ async function courseView(cid) {
   if (!c) { await refresh(); c = findCourse(cid); }
   if (!c) return (location.hash = '');
   const list = c.subjects.map((s, i) => subjectCard(c, s, i)).join('');
+  const pr = PR[c.id] || { specs: [], papers: [] };
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <span>${esc(c.name)}</span></div>
       <h1>${esc(c.name)}</h1>
-      <p class="muted" style="margin:6px 0 0">Exams run in course order. Each one is 50 questions · 60 minutes · camera on.</p></div>
+      <p class="muted" style="margin:6px 0 0">Theory exams run in course order — 50 questions · 60 minutes · camera on. Practical papers open once you pass the theory exams they need.</p></div>
+    ${specBlock(c, pr)}
+    <h2 class="sech">Theory exams</h2>
     ${c.subjects.length ? `<div class="grid subjects">${list}</div>` : `<div class="empty mt24">No subjects are unlocked here yet. Contact the Academic Head.</div>`}
+    ${pracBlock(c, pr)}
   `, c.family);
+  bindSpec(c, pr); bindPrac(c, pr);
   $$('[data-book]').forEach((b) => (b.onclick = () => bookModal(c, c.subjects.find((x) => x.id === b.dataset.book))));
   $$('[data-cancel]').forEach((b) => (b.onclick = async () => {
     if (!(await confirmBox('Cancel this request?', 'Your requested date will be withdrawn. You can book again any time.', 'Cancel request', true))) return;
@@ -182,9 +194,10 @@ async function courseView(cid) {
     catch (e) { toast(errText(e), 'bad'); }
   }));
   // refresh in background to pick up unlocks/slots
+  const snap = JSON.stringify([c, PR[cid]]);
   if (!DEMO) refresh().then(() => {
     const c2 = findCourse(cid);
-    if (c2 && JSON.stringify(c2) !== JSON.stringify(c) && location.hash.startsWith('#/c/')) courseView(cid);
+    if (c2 && JSON.stringify([c2, PR[cid]]) !== snap && location.hash.startsWith('#/c/')) courseView(cid);
   }).catch(() => {});
 }
 
@@ -230,6 +243,9 @@ function subjectCard(c, s, i) {
     case 'exempt':
       status = `<span class="pill ok">✓ Completed earlier</span>`;
       action = `<div class="small muted">${esc(s.ext_note || 'Marked complete by the Academic Head.')}</div>`; break;
+    case 'spec':
+      status = `<span class="pill warn">Choose specialisation</span>`;
+      action = `<div class="small muted">Pick your specialisation at the top of this page to unlock booking.</div>`; break;
     case 'blocked':
       status = `<span class="pill bad">On hold</span>`;
       action = `<div class="small muted">This exam is on hold. Please meet the Academic Head.</div>`; break;
@@ -367,7 +383,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=4'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=5'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -831,3 +847,136 @@ async function reviewView(id) {
 }
 
 boot();
+
+// ---------------------------------------------------------------- specialisation + practical papers
+const LVL3 = { easy: ['Basic', 'B+'], medium: ['Standard', 'A'], hard: ['Advanced', 'A+'] };
+const hrs = (m) => (m >= 1440 ? `${Math.round(m / 1440)} days` : `${Math.round((m / 60) * 10) / 10} h`);
+function specBlock(c, pr) {
+  if (!pr.specs?.length) return '';
+  if (pr.spec) return `<div class="card spec-chosen mt16"><div class="spread"><div><div class="small muted">Your specialisation</div><h3>${esc(pr.spec.name)}</h3></div>
+    <span class="pill ok">Locked in</span></div><div class="small muted mt8">Your specialisation papers follow this choice. To change it, meet the Academic Head.</div></div>`;
+  return `<div class="card spec-pick mt16"><h3>Choose your specialisation</h3>
+    <p class="small muted" style="margin:6px 0 0">This decides your specialisation paper and portfolio focus. Choose carefully — you can't change it yourself later.</p>
+    <div class="grid specs mt16">${pr.specs.map((s) => `<button class="spec" data-spec="${s.id}"><b>${esc(s.name)}</b><span>${esc(s.blurb || '')}</span></button>`).join('')}</div></div>`;
+}
+function bindSpec(c, pr) {
+  $$('[data-spec]').forEach((b) => (b.onclick = async () => {
+    const sp = pr.specs.find((x) => x.id === b.dataset.spec);
+    if (!(await confirmBox(`Choose ${sp.name}?`, `Your specialisation for ${esc(c.name)} will be <b>${esc(sp.name)}</b>. Only the Academic Head can change it after this.`, 'Confirm specialisation'))) return;
+    try { await api('exam_spec_choose', { p_course: c.id, p_spec: sp.id }); toast('Specialisation saved.', 'ok'); await refresh(); courseView(c.id); }
+    catch (e) { toast(errText(e), 'bad'); }
+  }));
+}
+function pracBlock(c, pr) {
+  if (!pr.papers?.length) return '';
+  const mods = [...new Set(pr.papers.map((p) => p.module))];
+  return `<h2 class="sech">Practical papers</h2>
+    <p class="small muted" style="margin:-4px 0 12px">150 marks each. The timer starts the moment you open a paper — you get the question paper and the asset pack together.</p>
+    ${mods.map((m) => `<div class="modrow"><div class="modlab">Module ${m}</div><div class="grid subjects">${pr.papers.filter((p) => p.module === m).map((p) => pracCard(p)).join('')}</div></div>`).join('')}`;
+}
+function pracCard(p) {
+  const a = p.attempt; let status = '', action = '';
+  switch (p.state) {
+    case 'ready': status = `<span class="pill ok"><span class="dot pulse"></span>Ready to start</span>`;
+      action = `<button class="btn pri sm" data-pstart="${p.id}">Start practical</button>`; break;
+    case 'theory': status = `<span class="pill">Pass theory first</span>`;
+      action = `<div class="small muted">Needs: ${p.missing.map((m) => `<b style="color:var(--ink)">${esc(m.name)}</b>`).join(', ')}</div>`; break;
+    case 'spec': status = `<span class="pill warn">Choose specialisation</span>`; action = `<div class="small muted">Pick your specialisation above.</div>`; break;
+    case 'preparing': status = `<span class="pill warn">Paper being prepared</span>`; action = `<div class="small muted">You'll be informed when it's ready.</div>`; break;
+    case 'in_progress': status = `<span class="pill bad"><span class="dot pulse"></span>In progress</span>`;
+      action = `<div class="small" style="color:var(--ink)">Submit by ${fmtDT(a.deadline_at)}</div><a class="btn pri sm mt8" href="#/p/${a.id}">Open paper</a>`; break;
+    case 'submitted': status = `<span class="pill info">Submitted · awaiting marks</span>`;
+      action = `<a class="btn sm" href="#/p/${a.id}">View submission</a>`; break;
+    case 'marked': status = `<span class="pill ${a.passed ? 'ok' : 'bad'}">${a.passed ? 'Passed' : 'Not passed'} · ${a.total}/${p.marks}</span>`;
+      action = `<a class="btn sm" href="#/p/${a.id}">View marks</a>`; break;
+  }
+  const best = a?.grade ? `<span class="gradechip ${a.passed ? '' : 'f'}">${esc(a.grade)}</span>` : '';
+  return `<div class="scard ${p.state === 'ready' || p.state === 'in_progress' ? 'ready' : ''} ${['theory', 'preparing', 'spec'].includes(p.state) ? 'locked' : ''}">
+    <div class="sicon">P${p.paper}</div>
+    <div class="body"><div class="seq">MODULE ${p.module} · PAPER ${p.paper}</div><div class="spread"><h4>${esc(p.title)}</h4>${best}</div>
+      <div class="tiny dim">${p.marks} marks · ${hrs(p.work_min)} of work · ${hrs(p.window_min)} to submit</div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 12px">${status}</div>${action}</div></div>`;
+}
+function bindPrac(c, pr) {
+  $$('[data-pstart]').forEach((b) => (b.onclick = () => pracStartModal(c, pr.papers.find((p) => p.id === b.dataset.pstart))));
+}
+function pracStartModal(c, p) {
+  let level = 'medium';
+  const ends = new Date(Date.now() + p.window_min * 60000);
+  const m = modal(`<div class="small muted">Module ${p.module} · Paper ${p.paper} · ${p.marks} marks</div><h2>${esc(p.title)}</h2>
+    <p class="muted small">You'll get one of several paper options at random, with its asset pack. Choose your level — it changes how much you must deliver and the highest grade you can earn.</p>
+    <div class="grid levels">${['easy', 'medium', 'hard'].map((k) => `<button class="lvl ${k === level ? 'on' : ''}" data-lvl="${k}"><h3>${LVL3[k][0]}</h3>
+      <div class="cap">${LVL3[k][1]}</div><div class="tiny muted">highest grade</div></button>`).join('')}</div>
+    <div class="rules mt16">${[
+      ['clock', 'The timer starts as soon as I click Start', `Work time is about ${hrs(p.work_min)}. I must submit by <b>${ends.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit' })}</b> (${hrs(p.window_min)} including breaks, renders and upload).`],
+      ['wip', 'I will upload work-in-progress screenshots when asked', 'At the 2-hour and 4-hour marks. Missing check-ins are flagged to the examiner.'],
+      ['own', 'The work is entirely my own', 'Only the assets in the pack and my own work. AI tools only where the paper allows it — always declared.'],
+      ['files', 'I will submit source files, outputs and a 60-second walkthrough', 'One Google Drive folder shared as "Anyone with the link can view", plus a short screen recording walking through my file.'],
+    ].map((r) => `<label class="rule"><input type="checkbox"><div class="box"></div><div><b>${r[1]}</b><span>${r[2]}</span></div></label>`).join('')}</div>
+    <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Not now</button><button class="btn pri" data-ok disabled>Start — timer begins</button></div>`, 'wide');
+  const ok = m.el.querySelector('[data-ok]');
+  $$('.lvl', m.el).forEach((b) => (b.onclick = () => { level = b.dataset.lvl; $$('.lvl', m.el).forEach((x) => x.classList.toggle('on', x === b)); }));
+  $$('.rule', m.el).forEach((r) => (r.onclick = (e) => { e.preventDefault(); r.classList.toggle('on'); ok.disabled = !$$('.rule', m.el).every((x) => x.classList.contains('on')); }));
+  m.el.querySelector('[data-x]').onclick = m.close;
+  ok.onclick = async () => {
+    ok.disabled = true; ok.textContent = 'Opening paper…';
+    try { const r = await api('exam_prac_start', { p_paper: p.id, p_level: level, p_device: device() }); m.close(); sessionStorage.setItem('zp_prac_' + r.attempt_id, JSON.stringify(r)); location.hash = '#/p/' + r.attempt_id; }
+    catch (e) { toast(errText(e), 'bad'); ok.disabled = false; ok.textContent = 'Start — timer begins'; }
+  };
+}
+
+let pracTimer = null;
+async function pracView(id) {
+  clearInterval(pracTimer);
+  shell('<div class="spin"></div>');
+  let d; try { d = await api('exam_prac_get', { p_attempt: id }); } catch (e) { return fatal(errText(e)); }
+  const P = d.paper, O = d.option, C = O.content || {};
+  const off = Date.parse(d.server_now) - Date.now(), dl = Date.parse(d.deadline_at), st = Date.parse(d.started_at);
+  const open = d.status === 'in_progress' || d.status === 'submitted';
+  const cps = (d.checkpoint_min || [120, 240]).map((min, i) => ({ min, at: st + min * 60000, done: (d.checkpoints || [])[i] }));
+  const scoreRows = d.scores ? (C.rubric || []).map(([k, mx]) => `<tr><td>${esc(k)}</td><td style="text-align:right"><b>${d.scores[k] ?? 0}</b> / ${mx}</td></tr>`).join('') : '';
+  shell(`
+    <div class="phead"><div class="crumb"><a href="#/">Home</a> › <a href="#/c/${encodeURIComponent(P.course_id)}">${esc(P.course)}</a> › <span>Practical</span></div>
+      <div class="spread"><div class="row"><div class="sicon">P${P.paper}</div><div><h1>${esc(P.title)}</h1>
+        <div class="muted small">Module ${P.module} · Paper ${P.paper} · Option ${O.no} · ${LVL3[d.level][0]} level · ${P.marks} marks</div></div></div>
+        ${d.status === 'in_progress' ? `<div class="ptimer"><small>Time left to submit</small><b id="ptl">--:--</b><small>by ${fmtDT(d.deadline_at)}</small></div>` : ''}</div></div>
+    ${d.status === 'marked' ? `<div class="card"><div class="spread"><div><div class="small muted">Result</div><h2>${d.total} / ${P.marks} · ${esc(d.grade)}</h2></div>
+        <span class="pill ${d.passed ? 'ok' : 'bad'}">${d.passed ? 'Passed' : 'Not passed'}</span></div>
+        <table class="tbl mt16">${scoreRows}</table>${d.feedback ? `<div class="ex mt16">💬 ${esc(d.feedback)}</div>` : ''}</div>` : ''}
+    <div class="grid two mt16">
+      <div class="card"><h3>1 · Your question paper</h3><p class="small muted">Option ${O.no}: ${esc(O.title)}</p>
+        <button class="btn pri" id="pdl">⬇ Download question paper (PDF)</button>
+        ${O.asset_url ? `<a class="btn mt8" style="display:flex" href="${esc(O.asset_url)}" target="_blank" rel="noopener">📦 Open asset pack</a>` : `<div class="small muted mt8">No asset pack for this paper — everything you need is in the PDF.</div>`}</div>
+      <div class="card"><h3>2 · Work-in-progress check-ins</h3><p class="small muted">Upload a screenshot of your screen (or a photo of your sheet) to Drive and paste the link when each check-in opens.</p>
+        ${cps.map((c, i) => `<div class="cp ${c.done ? 'done' : ''}"><div><b>Check-in ${i + 1}</b><div class="tiny muted">${c.done ? 'Sent ' + fmtTime(c.done.at) : 'Opens ' + fmtTime(c.at)}</div></div>
+          ${c.done ? '<span class="pill ok">✓ Sent</span>' : d.status === 'in_progress' ? `<button class="btn sm" data-cp="${i}" ${Date.now() + off < c.at - 10 * 60000 ? 'disabled' : ''}>Add link</button>` : '<span class="pill">Missed</span>'}</div>`).join('')}</div>
+    </div>
+    <div class="card mt16"><h3>3 · Final submission</h3>
+      ${d.submitted_at ? `<p class="small">Submitted ${fmtDT(d.submitted_at)}${d.late_min ? ` · <b style="color:#ffb3c0">${d.late_min} min late</b>` : ''} · <a href="${esc(d.submit_link)}" target="_blank" rel="noopener">your folder ↗</a>${d.walkthrough_link ? ` · <a href="${esc(d.walkthrough_link)}" target="_blank" rel="noopener">walkthrough ↗</a>` : ''}</p>` : ''}
+      ${open && d.status !== 'marked' ? `<p class="small muted">Put everything in one Google Drive folder: source files, outputs and your 60-second walkthrough video. Share it as "Anyone with the link can view".</p>
+        <label class="lb">Drive folder link</label><input class="inp" id="psl" placeholder="https://drive.google.com/drive/folders/…" value="${esc(d.submit_link || '')}">
+        <label class="lb">Walkthrough video link (if not inside the folder)</label><input class="inp" id="pwl" placeholder="optional" value="${esc(d.walkthrough_link || '')}">
+        <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
+        <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
+  `, P.family);
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=5'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $$('[data-cp]').forEach((b) => (b.onclick = () => {
+    const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
+      <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
+    mm.el.querySelector('[data-x]').onclick = mm.close;
+    mm.el.querySelector('[data-ok]').onclick = async () => {
+      try { await api('exam_prac_checkpoint', { p_attempt: id, p_link: $('#cpl', mm.el).value.trim() }); mm.close(); toast('Check-in sent.', 'ok'); pracView(id); } catch (e) { toast(errText(e), 'bad'); }
+    };
+  }));
+  $('#psub') && ($('#psub').onclick = async () => {
+    const link = $('#psl').value.trim();
+    if (!/^https:\/\/\S+\.\S+/.test(link)) return toast('Paste your Drive folder link (starting with https://).', 'bad');
+    if (!d.submitted_at && !(await confirmBox('Submit your practical?', 'You can still update the link until your marks are given, but the submission time is recorded now.', 'Submit'))) return;
+    try { await api('exam_prac_submit', { p_attempt: id, p_link: link, p_walkthrough: $('#pwl').value.trim(), p_note: $('#pnt').value.trim() || null }); toast('Submitted. Your examiner will mark it.', 'ok'); await refresh(); pracView(id); }
+    catch (e) { toast(errText(e), 'bad'); }
+  });
+  if (d.status === 'in_progress') {
+    const tick = () => { const el = $('#ptl'); if (!el) return clearInterval(pracTimer); const left = dl - (Date.now() + off); el.textContent = mmss(left); el.classList.toggle('low', left < 30 * 60000); };
+    tick(); pracTimer = setInterval(tick, 1000);
+  }
+}

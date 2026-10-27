@@ -442,3 +442,28 @@ label.lb{display:block;font-size:12px;font-weight:600;color:var(--mute);margin:1
 .cb.ovb::after{background:var(--bad)}
 a.kpi-a,.kpi>a{display:block}
 .rqc h3 a{color:var(--ink);text-decoration:none}
+
+/* ---------- v3: specialisation + practicals */
+.sech{font-size:20px;margin:30px 0 4px}
+.modrow{margin-top:14px}
+.modlab{font-family:var(--disp);font-weight:600;font-size:14px;color:var(--mute);margin:0 0 -8px}
+.spec-pick{border-color:rgba(236,106,34,.45);background:linear-gradient(180deg,rgba(236,106,34,.08),var(--card))}
+.specs{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.spec{display:flex;flex-direction:column;gap:6px;text-align:left;padding:16px;border-radius:14px;background:var(--bg2);border:1px solid var(--line2);transition:.15s}
+.spec b{font-family:var(--disp);font-size:17px;font-weight:600;color:var(--ink)}
+.spec span{font-size:13px;color:var(--mute)}
+.spec:hover{border-color:var(--zica)}
+.ptimer{display:flex;flex-direction:column;align-items:flex-end;padding:10px 16px;border-radius:14px;background:var(--card);border:1px solid var(--line2)}
+.ptimer b{font-family:var(--disp);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.ptimer b.low{color:var(--bad)}
+.ptimer small{font-size:12px;color:var(--mute)}
+.cp{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);margin-top:8px}
+.cp.done{border-color:rgba(34,197,94,.35)}
+.grid.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.mark-wrap{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:16px;height:calc(100vh - 140px)}
+.mark-wrap iframe{width:100%;height:100%;border:1px solid var(--line2);border-radius:14px;background:#fff}
+.mark-side{overflow:auto;padding-right:4px}
+.rub{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.rub input{width:100%;padding:8px 10px;border-radius:10px;background:var(--bg2);border:1px solid var(--line2);text-align:right}
+.rub small{color:var(--mute)}
+@media (max-width:900px){.mark-wrap{grid-template-columns:1fr;height:auto}.mark-wrap iframe{height:60vh}}

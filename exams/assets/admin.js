@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=5';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -25,8 +25,8 @@ async function boot() {
 }
 function bindTop() { $$('[data-signout]').forEach((b) => (b.onclick = signOut)); }
 
-const ADMIN_TABS = [['dash', 'Dashboard'], ['requests', 'Requests'], ['students', 'Students'], ['slots', 'Slots'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['settings', 'Settings']];
-const STAFF_TABS = [['subs', 'Assignment reviews']];
+const ADMIN_TABS = [['dash', 'Dashboard'], ['requests', 'Requests'], ['students', 'Students'], ['slots', 'Slots'], ['prac', 'Practicals'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['settings', 'Settings']];
+const STAFF_TABS = [['prac', 'Practical marking'], ['subs', 'Assignment reviews']];
 const tabs = () => (META?.is_admin ? ADMIN_TABS : STAFF_TABS);
 function frame(inner) {
   const c = ME?.counts || {}, live = c.live || 0, req = (c.requests || 0) + (c.claims || 0), sub = c.submissions || 0;
@@ -43,15 +43,17 @@ function route() {
   const p = location.hash.replace(/^#\/?/, '').split('/');
   S.tab = tabs().some((t) => t[0] === p[0]) ? p[0] : tabs()[0][0];
   if (p[0] === 'students' && p[1] !== undefined) S.course = decodeURIComponent(p[1] || '');
-  ({ dash, requests, students, slots, subs, banks, settings })[S.tab]();
+  if (p[0] === 'prac' && p[1]) return pracMark(p[1]);
+  ({ dash, requests, students, slots, prac, subs, banks, settings })[S.tab]();
 }
 const subjName = (id) => META.subjects.find((s) => s.id === id)?.name || id;
 const subjShort = (id) => META.subjects.find((s) => s.id === id)?.short || id;
 
 // ================================================================= dashboard
+let PC = {};
 async function dash() {
   const draw = async () => {
-    try { ME = await rpc('exam_admin_overview'); } catch (e) { return toast(errText(e), 'bad'); }
+    try { [ME, PC] = await Promise.all([rpc('exam_admin_overview'), rpc('exam_admin_prac_counts').catch(() => ({}))]); } catch (e) { return toast(errText(e), 'bad'); }
     const c = ME.counts;
     const off = Date.parse(ME.server_now) - Date.now();
     frame(`
@@ -67,6 +69,7 @@ async function dash() {
         <a href="#/requests" class="${c.requests + c.claims ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${c.requests + c.claims}</b><small>Requests waiting${c.claims ? ` · ${c.claims} account links` : ''}</small></a>
         <a href="#/subs" style="text-decoration:none;color:inherit"><b>${c.submissions}</b><small>Assignments to review</small></a>
         <div><b>${c.today}</b><small>Exam slots today</small></div>
+        <a href="#/prac" class="${PC.submitted ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${PC.submitted || 0}</b><small>Practicals to mark${PC.in_progress ? ` · ${PC.in_progress} in progress` : ''}</small></a>
       </div>
       ${ME.upcoming?.length ? `<div class="card mt24"><div class="spread"><h3>Next 48 hours</h3><a class="small" href="#/slots">All slots ›</a></div>
         <div class="tscroll mt16" style="max-height:320px"><table class="tbl"><tr><th>When</th><th>Subject</th><th>Students</th></tr>
@@ -259,7 +262,7 @@ async function studentDrawer(id, after) {
   const close = () => { d.remove(); document.removeEventListener('keydown', esc1); after && after(); };
   const esc1 = (e) => e.key === 'Escape' && close();
   document.addEventListener('keydown', esc1);
-  let R; try { R = await rpc('exam_admin_student', { p_id: id }); } catch (e) { d.remove(); return toast(errText(e), 'bad'); }
+  let R, RP; try { [R, RP] = await Promise.all([rpc('exam_admin_student', { p_id: id }), rpc('exam_admin_student_prac', { p_id: id }).catch(() => [])]); } catch (e) { d.remove(); return toast(errText(e), 'bad'); }
   const s = R.student;
   d.innerHTML = `<div class="dh"><div class="avatar" style="width:44px;height:44px">${esc(initials(s.name))}</div>
       <div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3><div class="small muted">${esc(s.email)}${s.alt_emails?.length ? ' · alt: ' + esc(s.alt_emails.join(', ')) : ''}</div></div>
@@ -281,6 +284,14 @@ async function studentDrawer(id, after) {
           <td><select class="inp" style="padding:6px 8px" data-ov="${x.id}">
             <option value="auto" ${x.override == null && !x.done_external ? 'selected' : ''}>Auto</option><option value="allow" ${x.override === true ? 'selected' : ''}>Allow</option>
             <option value="block" ${x.override === false ? 'selected' : ''}>Block</option><option value="ext" ${x.done_external ? 'selected' : ''}>Done earlier</option></select></td></tr>`).join('')}</table></div></div>
+
+      ${(RP || []).length ? `<div class="sec"><h4>Specialisation & practicals</h4>${RP.map((c) => `<div class="rv" style="margin-top:8px">
+          <div class="spread"><b>${esc(c.course)}</b>${c.specs.length ? `<select class="inp" style="padding:6px 8px;width:auto" data-spec="${c.course_id}">
+            <option value="" ${!c.spec ? 'selected' : ''} disabled>Not chosen yet</option>${c.specs.map((x) => `<option value="${x.id}" ${c.spec === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}</div>
+          ${c.papers.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th>Paper</th><th>State</th><th>Result</th></tr>${c.papers.map((p) => `<tr>
+            <td><b>M${p.module} P${p.paper}</b> <span class="small">${esc(p.title)}</span></td>
+            <td><span class="pill ${PST_CLS[p.state] || ''}" title="${esc((p.missing || []).map((m) => m.name).join(', '))}">${esc(PST_LBL[p.state] || p.state)}</span></td>
+            <td>${p.attempt ? (p.attempt.total != null ? `<a href="#/prac/${p.attempt.id}">${p.attempt.total}/${p.marks} · ${esc(p.attempt.grade || '')}</a>` : `<a href="#/prac/${p.attempt.id}">open ›</a>`) : '<span class="dim">—</span>'}</td></tr>`).join('')}</table></div>` : ''}</div>`).join('')}</div>` : ''}
 
       ${R.bookings.length ? `<div class="sec"><h4>Exam date requests</h4>${R.bookings.map((b) => `<div class="rv" style="margin-top:8px"><div class="spread">
           <div><b>${esc(b.subject || '—')}</b> <span class="small muted">· ${b.want_at ? fmtDT(b.want_at) : 'no time'} · ${esc(b.kind)} · via ${esc(b.source)}</span></div>
@@ -318,6 +329,8 @@ async function studentDrawer(id, after) {
   $$('[data-ov]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_set_unlock', { p_students: [id], p_subjects: [b.dataset.ov],
     p: b.value === 'ext' ? { done_external: true, ext_note: 'Completed earlier', override: 'auto' } : { done_external: false, override: b.value } }), 'Saved', reload)));
   $$('[data-rep]', d).forEach((b) => (b.onclick = () => reportModal(b.dataset.rep)));
+  $$('[data-spec]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_spec_set', { p_student: id, p_course: b.dataset.spec, p_spec: b.value }), 'Specialisation saved', reload)));
+  $$('a[href^="#/prac/"]', d).forEach((a) => a.addEventListener('click', () => d.remove()));
   $$('[data-act]', d).forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, reload)));
   $$('[data-snap]', d).forEach((b) => (b.onclick = async () => {
     const im = b.querySelector('.im'); im.textContent = '…';
@@ -326,9 +339,11 @@ async function studentDrawer(id, after) {
       else im.textContent = r?.drive_name ? 'Saved in Drive' : 'not available'; } catch (e) { im.textContent = 'error'; }
   }));
 }
-const ST_LBL = { live: 'Writing now', exempt: 'Done earlier', locked: 'Locked', done: 'Attempts used', preparing: 'Bank not ready', blocked: 'Blocked', sequence: 'Waiting (order)',
+const PST_LBL = { ready: 'Can start', theory: 'Theory pending', spec: 'Needs specialisation', preparing: 'Paper being prepared', in_progress: 'Working now', submitted: 'To mark', marked: 'Marked' };
+const PST_CLS = { ready: 'ok', theory: '', spec: 'warn', preparing: '', in_progress: 'info', submitted: 'warn', marked: 'ok' };
+const ST_LBL = { spec: 'Needs specialisation', live: 'Writing now', exempt: 'Done earlier', locked: 'Locked', done: 'Attempts used', preparing: 'Bank not ready', blocked: 'Blocked', sequence: 'Waiting (order)',
   assignments: 'Needs assignments', ready: 'Open now', requested: 'Date requested', scheduled: 'Scheduled', missed: 'Missed', book: 'Can book' };
-const stCls = (st) => ({ live: 'bad', exempt: 'ok', ready: 'ok', requested: 'warn', scheduled: 'info', missed: 'bad', blocked: 'bad', assignments: 'warn', book: 'info' }[st] || '');
+const stCls = (st) => ({ spec: 'warn', live: 'bad', exempt: 'ok', ready: 'ok', requested: 'warn', scheduled: 'info', missed: 'bad', blocked: 'bad', assignments: 'warn', book: 'info' }[st] || '');
 const evDetail = (e) => { const d = e.detail || {}; return Object.entries(d).filter(([k]) => !['ua'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ').slice(0, 160); };
 
 function studentForm(R, after) {
@@ -626,6 +641,74 @@ function staffForm(f) {
     const email = (f.email || $('#fe', m.el).value).trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return toast('Enter a valid Gmail.', 'bad');
     m.close(); run(() => rpc('exam_admin_staff_save', { p: { email, name: $('#fn', m.el).value.trim(), subjects: $$('.picklist input:checked', m.el).map((x) => x.value), active: $('#fa', m.el).checked } }), 'Faculty saved', settings);
+  };
+}
+
+
+// ================================================================= practicals (admins + faculty)
+const LV3 = { easy: 'Basic', medium: 'Standard', hard: 'Advanced' };
+const driveEmbed = (u) => {
+  const s = String(u || '');
+  const f = s.match(/folders\/([\w-]+)/); if (f) return `https://drive.google.com/embeddedfolderview?id=${f[1]}#grid`;
+  const d = s.match(/\/d\/([\w-]+)/) || s.match(/[?&]id=([\w-]+)/); if (d) return `https://drive.google.com/file/d/${d[1]}/preview`;
+  return s;
+};
+async function prac() {
+  S.pst = S.pst || 'submitted';
+  frame(`<div class="phead"><h1>Practical papers</h1><div class="small muted">Students start a paper from the portal; the timer runs from that moment. Mark submissions against the rubric (150 marks).</div></div>
+    <div class="toolbar"><select class="inp" id="pst">${[['submitted', 'Waiting for marks'], ['in_progress', 'In progress now'], ['marked', 'Marked'], ['all', 'All']].map(([v, t]) => `<option value="${v}" ${S.pst === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <input class="inp" id="pq" placeholder="Search student" style="flex:1" value="${esc(S.pq || '')}"></div><div id="pl"><div class="spin"></div></div>`);
+  $('#pst').onchange = (e) => { S.pst = e.target.value; prac(); };
+  let L; try { L = await rpc('exam_admin_prac_list', { p_status: S.pst }); } catch (e) { return toast(errText(e), 'bad'); }
+  const draw = () => {
+    const q = (S.pq || '').toLowerCase();
+    const rows = L.filter((x) => !q || x.name.toLowerCase().includes(q) || (x.code || '').includes(q) || x.email.includes(q));
+    $('#pl').innerHTML = !rows.length ? '<div class="empty">Nothing here.</div>' : `<div class="tscroll"><table class="tbl"><tr><th>Student</th><th>Paper</th><th>Level</th><th>Started</th><th>Deadline / submitted</th><th>Check-ins</th><th>Status</th><th></th></tr>
+      ${rows.map((x) => `<tr><td><b>${esc(x.name)}</b><div class="tiny dim">${esc(x.code || x.email)}</div></td>
+        <td><b>${esc(x.title)}</b><div class="tiny dim">${esc(x.course)} · M${x.module} P${x.paper} · Option ${x.option_no}</div></td>
+        <td>${LV3[x.level]}</td><td class="small" style="white-space:nowrap">${fmtDT(x.started_at)}</td>
+        <td class="small" style="white-space:nowrap">${x.submitted_at ? fmtDT(x.submitted_at) + (x.late_min ? `<div style="color:#ffb3c0">${x.late_min} min late</div>` : '<div class="tiny" style="color:#86efac">on time</div>') : 'by ' + fmtDT(x.deadline_at)}</td>
+        <td>${x.checkpoints}/2</td>
+        <td>${x.status === 'marked' ? `<span class="pill ok">${x.total}/150 · ${esc(x.grade)}</span>` : x.status === 'submitted' ? '<span class="pill info">To mark</span>' : '<span class="pill warn">Working</span>'}</td>
+        <td><div class="row" style="gap:6px;justify-content:flex-end">${x.status === 'in_progress' ? (META.is_admin ? `<button class="btn sm" data-pext="${x.id}">+ time</button>` : '')
+          : `<a class="btn sm ${x.status === 'submitted' ? 'pri' : ''}" href="#/prac/${x.id}">${x.status === 'marked' ? 'Review' : 'Mark'}</a>`}
+          ${META.is_admin ? `<button class="btn sm ghost" data-pvoid="${x.id}" title="Cancel this attempt so the student can start again with a new option">Reset</button>` : ''}</div></td></tr>`).join('')}</table></div>`;
+    $$('[data-pext]').forEach((b) => (b.onclick = () => { const n = +prompt('Add how many minutes?', '30'); if (n > 0) run(() => rpc('exam_admin_prac_action', { p_attempt: b.dataset.pext, p_action: 'extend', p_minutes: n }), `+${n} min`, prac); }));
+    $$('[data-pvoid]').forEach((b) => (b.onclick = async () => { if (await confirmBox('Reset this practical?', 'The attempt is cancelled (kept in records) and the student can start again — they will get a different option.', 'Reset', true)) run(() => rpc('exam_admin_prac_action', { p_attempt: b.dataset.pvoid, p_action: 'void' }), 'Reset', prac); }));
+  };
+  $('#pq').oninput = (e) => { S.pq = e.target.value; draw(); };
+  draw();
+}
+async function pracMark(id) {
+  S.tab = 'prac';
+  frame('<div class="spin"></div>');
+  let d; try { d = await rpc('exam_admin_prac_get', { p_attempt: id }); } catch (e) { return toast(errText(e), 'bad'); }
+  const P = d.paper, O = d.option, K = O.content || {}, R = K.rubric || [], sc = d.scores || {};
+  const links = [['Submission folder', d.submit_link], ['Walkthrough', d.walkthrough_link], ...(d.checkpoints_full || []).map((c, i) => [`Check-in ${i + 1} · ${fmtTime(c.at)}`, c.link])].filter((x) => x[1]);
+  $('#pg').innerHTML = `<div class="phead spread"><div><div class="crumb"><a href="#/prac">Practicals</a> › <span>${esc(d.student.name)}</span></div>
+      <h1 style="font-size:24px">${esc(P.title)}</h1><div class="small muted">${esc(d.student.name)} · ${esc(d.student.code || d.student.email)} · ${esc(P.course)} · Option ${O.no} (${esc(O.title)}) · ${LV3[d.level]} level · started ${fmtDT(d.started_at)} · ${d.submitted_at ? 'submitted ' + fmtDT(d.submitted_at) + (d.late_min ? ` (${d.late_min} min late)` : ' (on time)') : 'not submitted'}</div></div></div>
+    <div class="mark-wrap"><div><div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">${links.map(([t, u], i) => `<button class="btn sm ${i === 0 ? 'pri' : ''}" data-view="${esc(u)}">${esc(t)}</button>`).join('')}
+        ${d.submit_link ? `<a class="btn sm ghost" href="${esc(d.submit_link)}" target="_blank" rel="noopener">Open in Drive ↗</a>` : ''}</div>
+      <iframe id="pv" src="${esc(driveEmbed(d.submit_link))}" allow="autoplay" referrerpolicy="no-referrer"></iframe></div>
+    <div class="mark-side card"><h3>Rubric · ${P.marks} marks</h3>
+      ${R.map(([k, mx]) => `<div class="rub"><div>${esc(k)}<br><small>out of ${mx}</small></div><input type="number" min="0" max="${mx}" step="0.5" data-k="${esc(k)}" data-mx="${mx}" value="${sc[k] ?? ''}"></div>`).join('') || '<div class="empty">This option has no rubric.</div>'}
+      <div class="spread mt16"><b>Total</b><b id="ptot" style="font-size:22px;font-family:var(--disp)">0 / ${P.marks}</b></div>
+      <label class="lb">Feedback for the student</label><textarea class="inp" id="pfb" rows="5">${esc(d.feedback || '')}</textarea>
+      <button class="btn pri block mt16" id="psave" ${d.status === 'in_progress' ? 'disabled' : ''}>${d.status === 'marked' ? 'Update marks' : 'Save marks & email result'}</button>
+      ${d.submit_note ? `<div class="ex mt16">Student note: ${esc(d.submit_note)}</div>` : ''}
+      <details class="mt16"><summary class="small muted">The paper this student got</summary><div class="small mt8" style="white-space:pre-wrap">${esc(K.brief || '')}</div>
+        ${(K.questions || []).map((q) => `<div class="small mt8"><b>Q${q.no}. ${esc(q.title || '')} (${q.marks})</b><br>${esc(q.task || '')}</div>`).join('')}
+        <div class="small mt8"><b>${LV3[d.level]} deliverables:</b> ${esc(((K.levels || {})[d.level] || []).join(' · '))}</div></details></div></div>`;
+  bindTop();
+  const sum = () => { let t = 0; $$('[data-k]').forEach((i) => (t += Math.min(+i.dataset.mx, Math.max(0, +i.value || 0)))); $('#ptot').textContent = `${t} / ${P.marks}`; };
+  $$('[data-k]').forEach((i) => (i.oninput = sum)); sum();
+  $$('[data-view]').forEach((b) => (b.onclick = () => { $('#pv').src = driveEmbed(b.dataset.view); $$('[data-view]').forEach((x) => x.classList.toggle('pri', x === b)); }));
+  $('#psave').onclick = async () => {
+    const scores = {}; let bad = false;
+    $$('[data-k]').forEach((i) => { const v = +i.value; if (i.value === '' ) bad = true; if (v > +i.dataset.mx || v < 0) bad = true; scores[i.dataset.k] = v || 0; });
+    if (bad) return toast('Fill every criterion with a score within its maximum.', 'bad');
+    try { const r = await rpc('exam_admin_prac_mark', { p_attempt: id, p_scores: scores, p_feedback: $('#pfb').value.trim() || null }); toast(`Saved · ${r.total}/${P.marks} · ${r.grade}`, 'ok'); location.hash = '#/prac'; }
+    catch (e) { toast(errText(e), 'bad'); }
   };
 }
 
