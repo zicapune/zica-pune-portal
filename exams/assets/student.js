@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG } from './common.js?v=6';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=7';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -263,7 +263,7 @@ function subjectCard(c, s, i) {
     ? `<a class="small" href="${ahref}" style="display:block;margin-top:10px;color:var(--ink2)">📁 Assignments ${got}/${A.req}${A.redo ? ` · ${A.redo} to redo` : ''} ›</a>` : '';
   const on = ['ready', 'live', 'book', 'missed'].includes(s.state);
   return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing'].includes(s.state) ? 'locked' : ''}">
-    <div class="sicon">${esc(s.short || s.name.slice(0, 2))}</div>
+    ${swTile(s.id, s.short || s.name.slice(0, 2))}
     <div class="body"><div class="seq">STEP ${i + 1}</div><div class="spread"><h4>${esc(s.name)}</h4>${best}</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 12px">${status}</div>${action}${assignLine}</div></div>`;
 }
@@ -329,7 +329,7 @@ async function assignView(cid, sid) {
   const mods = [...new Set(d.items.map((a) => a.module || 'Assignments'))];
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › ${c ? `<a href="#/c/${encodeURIComponent(cid)}">${esc(c.name)}</a> › ` : ''}<span>${esc(d.subject?.name)} assignments</span></div>
-      <div class="spread"><div class="row"><div class="sicon">${esc(d.subject?.short || '')}</div><div><h1>${esc(d.subject?.name)} · Assignments</h1>
+      <div class="spread"><div class="row">${swTile(d.subject?.id, d.subject?.short || '')}<div><h1>${esc(d.subject?.name)} · Assignments</h1>
         <div class="muted small">Client-style briefs. Do the work, upload to Google Drive (link: “Anyone with the link can view”) and submit the link here.</div></div></div>
         ${d.items.length ? `<button class="btn" id="dlAll">⬇ Download all briefs (PDF)</button>` : ''}</div></div>
     ${P.req ? `<div class="card"><div class="spread"><h3>${got} of ${P.req} ${P.mode === 'submitted' ? 'submitted' : 'approved'}</h3>
@@ -383,7 +383,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=6'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=7'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -420,7 +420,7 @@ async function setupView(cid, sid) {
   ];
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <a href="#/c/${encodeURIComponent(cid)}">${esc(c.name)}</a> › <span>${esc(s.name)}</span></div>
-      <div class="row"><div class="sicon">${esc(s.short)}</div><div><h1>${esc(s.name)}</h1>
+      <div class="row">${swTile(s.id, s.short)}<div><h1>${esc(s.name)}</h1>
       <div class="muted small">${resume ? 'Resume your exam — your timer has been running.' : `50 questions · 60 minutes · attempt ${s.used + 1} of ${s.max_attempts}`}</div></div></div></div>
     ${levelHtml}
     <div class="card mt16"><h3>${resume ? '1' : '2'} · Exam rules</h3><p class="small muted" style="margin:6px 0 0">Tick each one to continue.</p>
@@ -503,7 +503,7 @@ function startExam(p, course) {
 
   app.innerHTML = `<div data-fam="${course.family}">
     <div class="xbar"><div class="wrap">
-      <div class="xsub"><div class="sicon">${esc(qs.length && course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}</div>
+      <div class="xsub">${swTile(p.subject.id, course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}
         <div style="min-width:0"><b>${esc(p.subject.name)}</b><div class="small muted">${cap(p.level)} level · ${esc(ME.student.name)}</div></div></div>
       <div style="flex:1"></div>
       <div class="timer" id="tmr">--:--</div>
@@ -892,8 +892,9 @@ function pracCard(p) {
   }
   const best = a?.grade ? `<span class="gradechip ${a.passed ? '' : 'f'}">${esc(a.grade)}</span>` : '';
   return `<div class="scard ${p.state === 'ready' || p.state === 'in_progress' ? 'ready' : ''} ${['theory', 'preparing', 'spec'].includes(p.state) ? 'locked' : ''}">
-    <div class="sicon">P${p.paper}</div>
+    <div class="sicon prac"><small>M${p.module}</small>P${p.paper}</div>
     <div class="body"><div class="seq">MODULE ${p.module} · PAPER ${p.paper}</div><div class="spread"><h4>${esc(p.title)}</h4>${best}</div>
+      ${(p.reqs || []).length ? `<div class="swmix">${p.reqs.map((x) => { const c = SW[x.id] || ['#8a8f99', '#3b3f47']; return `<i style="--c1:${c[0]};--c2:${c[1]}" title="${esc(x.name)}${x.any ? ' (any one)' : ''}">${esc(x.short || x.id)}</i>`; }).join('')}</div>` : ''}
       <div class="tiny dim">${p.marks} marks · ${hrs(p.work_min)} of work · ${hrs(p.window_min)} to submit</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 12px">${status}</div>${action}</div></div>`;
 }
@@ -937,7 +938,7 @@ async function pracView(id) {
   const scoreRows = d.scores ? (C.rubric || []).map(([k, mx]) => `<tr><td>${esc(k)}</td><td style="text-align:right"><b>${d.scores[k] ?? 0}</b> / ${mx}</td></tr>`).join('') : '';
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <a href="#/c/${encodeURIComponent(P.course_id)}">${esc(P.course)}</a> › <span>Practical</span></div>
-      <div class="spread"><div class="row"><div class="sicon">P${P.paper}</div><div><h1>${esc(P.title)}</h1>
+      <div class="spread"><div class="row"><div class="sicon prac"><small>M${P.module}</small>P${P.paper}</div><div><h1>${esc(P.title)}</h1>
         <div class="muted small">Module ${P.module} · Paper ${P.paper} · Option ${O.no} · ${LVL3[d.level][0]} level · ${P.marks} marks</div></div></div>
         ${d.status === 'in_progress' ? `<div class="ptimer"><small>Time left to submit</small><b id="ptl">--:--</b><small>by ${fmtDT(d.deadline_at)}</small></div>` : ''}</div></div>
     ${d.status === 'marked' ? `<div class="card"><div class="spread"><div><div class="small muted">Result</div><h2>${d.total} / ${P.marks} · ${esc(d.grade)}</h2></div>
@@ -959,7 +960,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=6'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=7'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
@@ -980,3 +981,4 @@ async function pracView(id) {
     tick(); pracTimer = setInterval(tick, 1000);
   }
 }
+

@@ -203,3 +203,21 @@ export function signInScreen(target, title = 'Your software exams, on your sched
 }
 
 export const FAM_ICON = { design: 'GD', uiux: 'UX', motion: 'MG', vfx: 'FX', anim: '3D', game: 'GA', genai: 'AI' };
+
+// ---- software tile colours (original gradients keyed to each tool's familiar hue — not the vendors' logos)
+export const SW = {
+  photoshop: ['#3fb2ff', '#0a4f99'], illustrator: ['#ffab2e', '#c25a00'], indesign: ['#ff4f7b', '#a3123b'], lightroom: ['#3cc9f3', '#0b6390'],
+  after_effects: ['#a4a4ff', '#4a3fc4'], premiere: ['#e98cff', '#8526aa'], audition: ['#2ee6c2', '#00806a'], animate: ['#ff7a45', '#b02e0a'],
+  xd: ['#ff6af3', '#9c1693'], coreldraw: ['#3fd681', '#11723a'], figma: ['#b07bff', '#5426b0'], figjam: ['#ffd23f', '#c08300'],
+  notion: ['#7d828e', '#2a2d34'], maya: ['#33c3d1', '#0d6470'], max3ds: ['#2cc4b6', '#0a645c'], arnold: ['#a6d955', '#4b7a12'],
+  zbrush: ['#9aa0ab', '#383c44'], substance_painter: ['#ff5b66', '#8c1420'], blender: ['#ff9636', '#ad4c06'], unreal: ['#5b616d', '#1a1d23'],
+  nuke: ['#ffd447', '#c48500'], silhouette: ['#ff6b8a', '#a01535'], threede: ['#45dac8', '#11766a'], mocha: ['#86da94', '#2a7739'],
+  houdini: ['#ff8a33', '#b03a00'], davinci: ['#79dbff', '#1a6aa0'], element3d: ['#5ad6ff', '#185a88'], trapcode: ['#f8cd55', '#a2700a'],
+  storyboard_pro: ['#f76a3a', '#9a2a09'], toon_boom: ['#ff5f7c', '#a51536'], gen_ai: ['#f07a35', '#b0420b'], fine_art: ['#e0ab73', '#87552a'],
+  autocad: ['#ec5555', '#871313'], sketchup: ['#e2635f', '#7a1c19'], vray: ['#67a9ff', '#22489a'], digital_marketing: ['#34d06d', '#147a3a'],
+};
+export function swTile(id, label, extra = '') {
+  const c = SW[id] || ['#f08a3c', '#b4440c'];
+  const t = String(label || '').slice(0, 3);
+  return `<div class="sicon sw ${t.length > 2 ? 'l3' : ''} ${extra}" style="--c1:${c[0]};--c2:${c[1]}">${esc(t)}</div>`;
+}
