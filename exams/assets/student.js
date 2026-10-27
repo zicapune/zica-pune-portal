@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=7';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=8';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -137,11 +137,38 @@ async function homeView() {
         <div class="spread"><div><span class="pill bad"><span class="dot pulse"></span>Exam in progress</span>
         <h3 class="mt8">${esc(live.name)}</h3><div class="small muted">Your timer is running. Resume now to keep answering.</div></div>
         <a class="btn pri" href="#/s/${encodeURIComponent(live.course.id)}/${live.id}">Resume exam</a></div></div>` : ''}
-    ${ME.courses.length ? `<div class="grid courses">${cards}</div>`
+    ${canNowBlock()}
+    ${ME.courses.length ? `<h3 class="mt32">Your courses</h3><div class="grid courses mt16">${cards}</div>`
       : `<div class="empty mt24">No courses are linked to your account yet. Please contact the Academic Head.</div>`}
     ${historyBlock()}
     ${howItWorks()}
   `);
+  $$('[data-hbook]').forEach((b) => (b.onclick = () => { const c = findCourse(b.dataset.hc); bookModal(c, c?.subjects.find((x) => x.id === b.dataset.hbook)); }));
+}
+const NOW_ORDER = ['ready', 'scheduled', 'book', 'missed', 'requested', 'assignments', 'held', 'spec'];
+function canNowBlock() {
+  const seen = new Set();
+  const items = allSubjects().filter((x) => NOW_ORDER.includes(x.state) && !seen.has(x.id) && seen.add(x.id))
+    .sort((a, b) => NOW_ORDER.indexOf(a.state) - NOW_ORDER.indexOf(b.state));
+  if (!items.length) return '';
+  const row = (x) => {
+    const c = x.course, A = x.assign || {};
+    const go = `#/c/${encodeURIComponent(c.id)}`;
+    const t = {
+      ready: ['ok', '● Open now', `<a class="btn pri sm" href="#/s/${encodeURIComponent(c.id)}/${x.id}">Start exam</a>`],
+      scheduled: ['info', x.slot ? fmtRange(x.slot.starts_at, x.slot.ends_at) : 'Confirmed', `<a class="btn sm" href="${go}">Details</a>`],
+      book: ['ok', x.best ? 'Retake available' : 'Ready to book', `<button class="btn pri sm" data-hbook="${x.id}" data-hc="${c.id}">Book exam date</button>`],
+      missed: ['bad', 'Missed — pick a new date', `<button class="btn pri sm" data-hbook="${x.id}" data-hc="${c.id}">Pick a new date</button>`],
+      requested: ['warn', 'Awaiting approval', `<a class="btn sm ghost" href="${go}">View</a>`],
+      assignments: ['warn', `Assignments ${A.mode === 'submitted' ? A.submitted : A.approved}/${A.need} needed first`, `<a class="btn sm" href="#/a/${encodeURIComponent(c.id)}/${x.id}">Assignments</a>`],
+      held: ['warn', `Result on hold · ${A.submitted || 0}/${A.req} assignments`, `<a class="btn sm" href="#/a/${encodeURIComponent(c.id)}/${x.id}">Submit assignments</a>`],
+      spec: ['warn', 'Choose your specialisation first', `<a class="btn sm" href="${go}">Choose</a>`],
+    }[x.state];
+    return `<div class="it ${['ready', 'book', 'missed'].includes(x.state) ? 'go' : ''}">${swTile(x.id, x.short || x.name.slice(0, 2))}
+      <div class="meta"><h4>${esc(x.name)}</h4><div class="row" style="gap:6px;margin-top:5px;flex-wrap:wrap"><span class="pill ${t[0]}">${esc(t[1])}</span></div></div>${t[2]}</div>`;
+  };
+  return `<div class="mt24"><div class="spread"><h3>Your exams</h3><span class="small muted">Easy · Medium · Hard — you choose · 2 attempts each</span></div>
+    <div class="cannow">${items.map(row).join('')}</div></div>`;
 }
 function courseIcon(c) {
   const m = c.name.match(/\b(PCDP|PDP|PP|UI|VFX|3D|2D|Gen AI)\b/i);
@@ -150,7 +177,10 @@ function courseIcon(c) {
 function historyBlock() {
   if (!ME.history?.length) return '';
   return `<h3 class="mt32">Your results</h3><div class="grid mt16" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-    ${ME.history.map((h) => `<a class="scard" href="#/r/${h.attempt_id}" style="text-decoration:none">
+    ${ME.history.map((h) => h.held ? `<a class="scard" href="#/r/${h.attempt_id}" style="text-decoration:none">
+      <span class="gradechip held">⏳</span>
+      <div class="body"><h4>${esc(h.subject)}</h4><div class="small muted">Result on hold · submit your assignments · ${fmtDate(h.at)}</div></div></a>`
+      : `<a class="scard" href="#/r/${h.attempt_id}" style="text-decoration:none">
       <span class="gradechip ${h.passed ? '' : 'f'}">${esc(h.grade)}</span>
       <div class="body"><h4>${esc(h.subject)}</h4><div class="small muted">${h.score}/${h.max} · ${cap(h.level)} · ${fmtDate(h.at)}</div></div></a>`).join('')}
   </div>`;
@@ -208,7 +238,7 @@ function subjectCard(c, s, i) {
   const A = s.assign || {};
   const got = A.mode === 'submitted' ? A.submitted : A.approved;
   let status = '', action = '';
-  const best = s.best ? `<span class="gradechip ${s.best.passed ? '' : 'f'}" title="${s.best.score}/${s.best.max}">${esc(s.best.grade)}</span>` : '';
+  const best = s.best?.held ? `<span class="gradechip held" title="Result on hold until your assignments are in">⏳</span>` : s.best ? `<span class="gradechip ${s.best.passed ? '' : 'f'}" title="${s.best.score}/${s.best.max}">${esc(s.best.grade)}</span>` : '';
   const bookBtn = (label = 'Book exam date') => `<button class="btn pri sm" data-book="${s.id}">${label}</button>`;
   switch (s.state) {
     case 'live':
@@ -240,6 +270,9 @@ function subjectCard(c, s, i) {
     case 'assignments':
       status = `<span class="pill warn">Assignments ${got}/${A.need} needed</span>`;
       action = `<div class="small muted" style="margin-bottom:8px">${A.mode === 'submitted' ? 'Submit' : 'Get approved'} at least ${A.need} of ${A.req} assignments (${A.pct}%) to unlock this exam.</div><a class="btn sm" href="${ahref}">Open assignments</a>`; break;
+    case 'held':
+      status = `<span class="pill warn">⏳ Result on hold</span>`;
+      action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result and certificate unlock once you submit all ${A.req} assignments — ${A.submitted || 0} of ${A.req} submitted so far.</div><a class="btn pri sm" href="${ahref}">Submit assignments</a>`; break;
     case 'exempt':
       status = `<span class="pill ok">✓ Completed earlier</span>`;
       action = `<div class="small muted">${esc(s.ext_note || 'Marked complete by the Academic Head.')}</div>`; break;
@@ -259,8 +292,8 @@ function subjectCard(c, s, i) {
       status = s.best ? `<span class="pill ${s.best.passed ? 'ok' : 'bad'}">${s.best.passed ? 'Passed' : 'Not passed'} · ${s.best.score}/${s.best.max}</span>` : '<span class="pill">Attempts used</span>';
       action = s.best ? `<a class="btn sm" href="#/r/${s.best.attempt_id}">View report</a>` : `<div class="small muted">Contact the Academic Head.</div>`; break;
   }
-  const assignLine = A.req > 0 && s.state !== 'assignments' && s.state !== 'exempt'
-    ? `<a class="small" href="${ahref}" style="display:block;margin-top:10px;color:var(--ink2)">📁 Assignments ${got}/${A.req}${A.redo ? ` · ${A.redo} to redo` : ''} ›</a>` : '';
+  const assignLine = A.req > 0 && !['assignments', 'exempt', 'held'].includes(s.state)
+    ? `<a class="small" href="${ahref}" style="display:block;margin-top:10px;color:var(--ink2)">📁 Assignments ${A.submitted || 0}/${A.req} submitted${A.redo ? ` · ${A.redo} to redo` : ''} · <span style="color:var(--a1)">all ${A.req} needed for your result & certificate</span> ›</a>` : '';
   const on = ['ready', 'live', 'book', 'missed'].includes(s.state);
   return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing'].includes(s.state) ? 'locked' : ''}">
     ${swTile(s.id, s.short || s.name.slice(0, 2))}
@@ -312,7 +345,8 @@ async function bookModal(c, s) {
     ok.disabled = true; ok.textContent = 'Sending…';
     try {
       await api('exam_book', { p_subject: s.id, p_course: c.id === '_more' ? null : c.id, p_at: new Date(time).toISOString(), p_note: note || null });
-      m.close(); toast('Request sent. You’ll get an email once it’s confirmed.', 'ok'); await refresh(); courseView(c.id);
+      m.close(); toast('Request sent. You’ll get an email once it’s confirmed.', 'ok'); await refresh();
+      { const t = '#/c/' + encodeURIComponent(c.id); if (location.hash !== t) location.hash = t; else courseView(c.id); }
     } catch (e) { toast(errText(e), 'bad'); ok.disabled = false; ok.textContent = 'Send request'; }
   };
 }
@@ -331,7 +365,7 @@ async function assignView(cid, sid) {
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › ${c ? `<a href="#/c/${encodeURIComponent(cid)}">${esc(c.name)}</a> › ` : ''}<span>${esc(d.subject?.name)} assignments</span></div>
       <div class="spread"><div class="row">${swTile(d.subject?.id, d.subject?.short || '')}<div><h1>${esc(d.subject?.name)} · Assignments</h1>
         <div class="muted small">Client-style briefs. Do the work, upload to Google Drive (link: “Anyone with the link can view”) and submit the link here.</div></div></div>
-        ${d.items.length ? `<button class="btn" id="dlAll">⬇ Download all briefs (PDF)</button>` : ''}</div></div>
+        ${d.items.length ? `<button class="btn" id="dlAll">⬇ Download assignment PDF</button>` : ''}</div></div>
     ${P.req ? `<div class="card"><div class="spread"><h3>${got} of ${P.req} ${P.mode === 'submitted' ? 'submitted' : 'approved'}</h3>
         <span class="pill ${got >= P.need ? 'ok' : 'warn'}">${got >= P.need ? '✓ Exam requirement met' : `${P.need} needed for the exam (${P.pct}%)`}</span></div>
         <div class="prog mt8"><i style="width:${pct}%"></i></div>
@@ -383,7 +417,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=7'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=8'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -398,8 +432,9 @@ async function setupView(cid, sid) {
   let level = s.level_lock || 'medium';
 
   const levelHtml = resume ? '' : `
-    <div class="card mt24"><div class="spread"><h3>1 · Choose your level</h3>${s.level_lock ? '<span class="pill warn">Level set by the Academic Head</span>' : '<span class="pill">Medium is recommended</span>'}</div>
-      <p class="small muted" style="margin:6px 0 0">Your level locks the moment the paper opens. It decides the highest grade you can earn and is printed on your report.</p>
+    <div class="card mt24"><div class="spread"><h3>1 · Choose how hard your paper is</h3>${s.level_lock ? '<span class="pill warn">Level set by the Academic Head</span>' : '<span class="pill">Medium is recommended</span>'}</div>
+      <p class="small muted" style="margin:6px 0 0">Pick <b style="color:var(--ink)">Easy, Medium or Hard</b>. Harder papers can earn a higher grade. The level locks the moment the paper opens and is printed on your report.</p>
+      <div class="attnote"><b>${s.max_attempts || 2} attempts.</b> This is attempt ${s.used + 1} of ${s.max_attempts || 2}${s.used + 1 < (s.max_attempts || 2) ? ' — if you don’t pass, you can book one retake' : ' — your last attempt'}.</div>
       <div class="grid levels">${['easy', 'medium', 'hard'].map((k) => `
         <button class="lvl ${k === level ? 'on' : ''}" data-lvl="${k}" ${s.level_lock && s.level_lock !== k ? 'disabled' : ''}>
           <h3>${LEVEL_TXT[k].t}</h3><div class="small muted">${LEVEL_TXT[k].d}</div>
@@ -412,7 +447,7 @@ async function setupView(cid, sid) {
 
   const rules = [
     ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
-    ['camera', 'My camera stays on with my face clearly visible', 'Photos are taken at random and whenever a rule is broken. They are stored as proof.'],
+    ['camera', 'My face stays in the camera the whole time', `If my face leaves the camera (or the camera goes off) I get a warning — after ${ME.settings.face_limit || 3} warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
     ['tabs', 'I will not switch tabs, apps or windows', `Warnings 1 and 2 are shown on screen. The next one pauses and locks my exam until the Academic Head reviews it — the timer keeps running.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', 'I will finish within 60 minutes', 'Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
@@ -623,8 +658,10 @@ function startExam(p, course) {
     try {
       const r = await api('exam_violation', { p_attempt: p.attempt_id, p_kind: kind, p_image: img });
       X.viol = r.violations; renderPal();
+      if (r.ended === 'face_limit') return finish('face_limit');
       if (r.status === 'paused') return showPaused();
       if (r.status === 'done') return finish('time_up');
+      if (r.kind === 'face') return showFaceWarning(kind, r.face, r.face_limit);
       showWarning(kind, r.violations, r.limit);
     } catch { X.viol++; showWarning(kind, X.viol, X.limit); }
   };
@@ -635,6 +672,17 @@ function startExam(p, course) {
       <h2 class="mt16">${esc(t)}</h2><p class="muted">${esc(d)} To maintain the decorum of the exam, stay on this screen, keep your face clearly visible and do not take any help.</p>
       <p style="color:#fcd34d" class="small">${n >= lim ? 'This was your last warning. The next violation pauses and locks your exam until the Academic Head reviews it.' : `After ${lim} warnings, the next violation pauses and locks your exam.`} Your timer keeps running.</p>
       <button class="btn pri block mt16" data-ok>I understand — return to exam</button>`, 'warnm');
+    m.el.classList.add('viol');
+    m.el.querySelector('[data-ok]').onclick = () => { m.close(); goFull(); };
+  };
+  const showFaceWarning = (kind, n, lim) => {
+    $('.ov.viol')?.remove();
+    const [t] = VIOL_TXT[kind] || ['Stay in front of the camera'];
+    const last = n >= lim;
+    const m = modal(`<div class="bigic w">📷</div><div class="pill warn">Face warning ${n} of ${lim}</div>
+      <h2 class="mt16">${esc(t)}</h2><p class="muted">Stay in your place with your full face inside the camera until you submit.</p>
+      <p style="color:${last ? '#ffb3c0' : '#fcd34d'}" class="small">${last ? 'This was your last warning. If your face leaves the camera again, your exam is submitted automatically with the answers you have given.' : `After ${lim} warnings, your exam is submitted automatically with the answers you have given.`}</p>
+      <button class="btn pri block mt16" data-ok>I'm back — continue the exam</button>`, 'warnm');
     m.el.classList.add('viol');
     m.el.querySelector('[data-ok]').onclick = () => { m.close(); goFull(); };
   };
@@ -757,7 +805,7 @@ function startExam(p, course) {
   async function finish(how) {
     if (X.ended) return; X.ended = true;
     $$('.ov').forEach((o) => o.remove());
-    const wait = modal(`<div class="spin" style="margin:10px auto 18px"></div><h2 style="text-align:center">${how === 'time_up' ? "Time's up — submitting" : 'Submitting your answers'}</h2>
+    const wait = modal(`<div class="spin" style="margin:10px auto 18px"></div><h2 style="text-align:center">${how === 'time_up' ? "Time's up — submitting" : how === 'face_limit' ? 'Face warnings used up — submitting your answers' : 'Submitting your answers'}</h2>
       <p class="muted" style="text-align:center">Please don't close this page.</p>`);
     // final flush (answers queued while offline)
     const until = Date.now() + 12000;
@@ -783,6 +831,24 @@ function startExam(p, course) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ---------------------------------------------------------------- result on hold
+function heldView(r) {
+  const A = r.assign || {};
+  const cid = ME.courses?.find((c) => c.subjects.some((x) => x.id === r.subject_id))?.id;
+  const howTxt = { submitted: 'Submitted by you', time_up: 'Auto-submitted when time ran out', admin_ended: 'Ended by the Academic Head', face_limit: 'Auto-submitted: face left the camera too often' }[r.how] || '';
+  shell(`
+    <div class="phead"><div class="crumb"><a href="#/">Home</a> › <span>Result</span></div></div>
+    <div class="card" style="text-align:center;padding:36px 22px">
+      <div class="bigic w" style="margin:0 auto 14px">⏳</div>
+      <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><span class="pill warn">Result on hold</span><span class="pill">${cap(r.level)} level</span>${howTxt ? `<span class="pill">${esc(howTxt)}</span>` : ''}</div>
+      <h1 class="mt16">${esc(r.subject)}</h1>
+      <p class="muted" style="max-width:560px;margin:10px auto 0">Your exam is recorded — ${r.answered ?? 0} of ${r.total} questions answered. Your <b style="color:var(--ink)">result and certificate</b> are released only after you submit
+        <b style="color:var(--ink)">all ${A.req} assignments</b> for this software. You have submitted <b style="color:var(--a1)">${A.submitted || 0} of ${A.req}</b>.</p>
+      <p class="small dim mt8">The moment the last one is submitted, your result appears here and is emailed to you.</p>
+      ${cid ? `<a class="btn pri mt24" href="#/a/${encodeURIComponent(cid)}/${r.subject_id}">Submit my assignments</a>` : ''}
+    </div>`, ME.courses?.find((c) => c.id === cid)?.family);
+}
+
 // ---------------------------------------------------------------- result + review
 async function getResult(id) {
   const c = sessionStorage.getItem('zp_res_' + id);
@@ -794,9 +860,10 @@ async function getResult(id) {
 async function resultView(id, pre) {
   shell('<div class="spin"></div>');
   let r; try { r = pre || await getResult(id); } catch (e) { return fatal(errText(e)); }
+  if (r.held) { sessionStorage.removeItem('zp_res_' + id); return heldView(r); }
   const fam = ME.courses?.flatMap((c) => c.subjects.map((s) => [s.id, c.family])).find((x) => x[0] === r.subject_id)?.[1] || r.family || 'design';
   const pct = Number(r.percent || 0); const C = 2 * Math.PI * 78;
-  const howTxt = { submitted: 'Submitted by you', time_up: 'Auto-submitted when time ran out', admin_ended: 'Ended by the Academic Head' }[r.how] || '';
+  const howTxt = { submitted: 'Submitted by you', time_up: 'Auto-submitted when time ran out', admin_ended: 'Ended by the Academic Head', face_limit: 'Auto-submitted: face left the camera too often' }[r.how] || '';
   const used = r.submitted_at && r.started_at ? Math.round((Date.parse(r.submitted_at) - Date.parse(r.started_at)) / 60000) : null;
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <span>Result</span></div></div>
@@ -960,7 +1027,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=7'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=8'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

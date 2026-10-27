@@ -27,7 +27,7 @@ export class Cam {
     return this.stream;
   }
 
-  attach(video) { if (this.stream) { video.srcObject = this.stream; video.muted = true; video.setAttribute('playsinline', ''); video.play().catch(() => {}); } }
+  attach(video) { this.video = video; if (this.stream) { video.srcObject = this.stream; video.muted = true; video.setAttribute('playsinline', ''); video.play().catch(() => {}); } }
 
   alive() {
     const tr = this.stream?.getVideoTracks()[0];
@@ -73,8 +73,8 @@ export class Cam {
 }
 
 // Face watcher: emits 'noface' after `noFaceMs`, 'multi' after `multiMs`
-export function watchFaces(cam, { onState, onNoFace, onMulti, noFaceMs = 8000, multiMs = 4000, every = 1500 }) {
-  // a still-missing face re-fires every 45 s; a returning face resets everything
+export function watchFaces(cam, { onState, onNoFace, onMulti, noFaceMs = 2500, multiMs = 3000, every = 700, again = 8000 }) {
+  // a missing face fires after noFaceMs and again every `again` ms while still missing; a returning face resets
   let noSince = 0, multiSince = 0;
   const t = setInterval(() => {
     if (document.hidden) return;
@@ -84,11 +84,11 @@ export function watchFaces(cam, { onState, onNoFace, onMulti, noFaceMs = 8000, m
     if (n === -1) return;
     if (n === 0) {
       noSince ||= now;
-      if (now - noSince > noFaceMs) { onNoFace?.(); noSince = now + 45000 - noFaceMs; }
+      if (now - noSince > noFaceMs) { onNoFace?.(); noSince = now + again - noFaceMs; }
     } else noSince = 0;
     if (n >= 2) {
       multiSince ||= now;
-      if (now - multiSince > multiMs) { onMulti?.(n); multiSince = now + 45000 - multiMs; }
+      if (now - multiSince > multiMs) { onMulti?.(n); multiSince = now + again - multiMs; }
     } else multiSince = 0;
   }, every);
   return () => clearInterval(t);

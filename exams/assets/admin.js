@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=7';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=8';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -59,7 +59,7 @@ async function dash() {
     const off = Date.parse(ME.server_now) - Date.now();
     frame(`
       <div class="phead spread"><div><h1>Exam control room</h1><div class="small muted">Auto-refreshes every 15 seconds · ${fmtDT(ME.server_now)}</div></div>
-        <div class="row"><a class="btn" href="#/slots">+ Schedule exam slot</a><a class="btn pri" href="#/students">Students & unlocks</a></div></div>
+        <div class="row"><button class="btn pri" id="grpX">👥 Group exam</button><a class="btn" href="#/slots">+ Slot</a><a class="btn" href="#/students">Students & unlocks</a></div></div>
       <div class="grid kpi">
         <div><b>${c.students}</b><small>Students on portal</small></div>
         <div><b>${c.active}</b><small>Active (in progress / on hold)</small></div>
@@ -87,6 +87,7 @@ async function dash() {
             : `<button class="btn sm" data-act="extend" data-a="${l.attempt_id}">+ time</button>`}
             <button class="btn sm bad" data-act="end" data-a="${l.attempt_id}">End</button></div></td></tr>`).join('')}</table></div>`
         : '<div class="empty mt16">Nobody is writing an exam right now.</div>'}</div>
+      <div id="heldBox"></div>
       <div class="grid mt24" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
         <div><h3>Courses</h3><div class="grid courses">${ME.courses.map((co) => `
           <a class="ccard" data-fam="${co.family}" href="#/students/${encodeURIComponent(co.id)}" style="text-decoration:none;min-height:150px">
@@ -97,6 +98,8 @@ async function dash() {
       </div>`);
     $$('[data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu); }));
     $$('[data-act]').forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, draw)));
+    $('#grpX').onclick = () => groupExam(draw);
+    heldCard();
   };
   await draw();
   timer = setInterval(() => { if (!$('.ov') && !$('.drawer') && S.tab === 'dash') draw(); }, 15000);
@@ -105,8 +108,8 @@ setInterval(() => $$('[data-dl]').forEach((b) => (b.textContent = mmss(Date.pars
 const feedCls = (k) => ({ violation: 'warn', paused: 'bad', finished: 'ok', start: 'info', absence_request: 'warn', booking_request: 'warn', booking_approved: 'ok', assignment_submit: 'info', claim: 'warn', admin: 'mark' }[k] || '');
 const feedDetail = (f) => {
   const d = f.detail || {};
-  if (f.kind === 'violation') return ` · ${esc(d.kind)} #${d.n}`;
-  if (f.kind === 'finished') return ` · <b>${esc(d.grade)}</b> ${d.score}/${d.max}`;
+  if (f.kind === 'violation') return ` · ${esc(d.kind)} #${d.n ?? d.face}${d.face ? ' (face)' : ''}`;
+  if (f.kind === 'finished') return ` · <b>${esc(d.grade)}</b> ${d.score}/${d.max}${d.held ? ' · held' : ''}${d.how === 'face_limit' ? ' · face limit' : ''}`;
   if (f.kind === 'start') return ` · ${esc(d.level || '')}`;
   if (f.kind === 'login' && d.registered === false) return ' · <span style="color:#ffb3c0">not registered</span>';
   if (f.kind === 'admin') return ` · ${esc(d.action || '')}`;
@@ -342,9 +345,9 @@ async function studentDrawer(id, after) {
 }
 const PST_LBL = { ready: 'Can start', theory: 'Theory pending', spec: 'Needs specialisation', preparing: 'Paper being prepared', in_progress: 'Working now', submitted: 'To mark', marked: 'Marked' };
 const PST_CLS = { ready: 'ok', theory: '', spec: 'warn', preparing: '', in_progress: 'info', submitted: 'warn', marked: 'ok' };
-const ST_LBL = { spec: 'Needs specialisation', live: 'Writing now', exempt: 'Done earlier', locked: 'Locked', done: 'Attempts used', preparing: 'Bank not ready', blocked: 'Blocked', sequence: 'Waiting (order)',
+const ST_LBL = { held: 'Result on hold', spec: 'Needs specialisation', live: 'Writing now', exempt: 'Done earlier', locked: 'Locked', done: 'Attempts used', preparing: 'Bank not ready', blocked: 'Blocked', sequence: 'Waiting (order)',
   assignments: 'Needs assignments', ready: 'Open now', requested: 'Date requested', scheduled: 'Scheduled', missed: 'Missed', book: 'Can book' };
-const stCls = (st) => ({ spec: 'warn', live: 'bad', exempt: 'ok', ready: 'ok', requested: 'warn', scheduled: 'info', missed: 'bad', blocked: 'bad', assignments: 'warn', book: 'info' }[st] || '');
+const stCls = (st) => ({ held: 'warn', spec: 'warn', live: 'bad', exempt: 'ok', ready: 'ok', requested: 'warn', scheduled: 'info', missed: 'bad', blocked: 'bad', assignments: 'warn', book: 'info' }[st] || '');
 const evDetail = (e) => { const d = e.detail || {}; return Object.entries(d).filter(([k]) => !['ua'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ').slice(0, 160); };
 
 function studentForm(R, after) {
@@ -375,8 +378,9 @@ function studentForm(R, after) {
 // ================================================================= slots
 async function slots() {
   frame(`<div class="phead spread"><div><h1>Exam slots</h1><div class="small muted">A slot is a time window. Students in it can start any unlocked exam (or one subject) anytime inside the window. Max 20 live at once.</div></div>
-    <button class="btn pri" id="newSlot">+ New slot</button></div><div id="sl"><div class="spin"></div></div>`);
+    <div class="row"><button class="btn pri" id="grpSlot">👥 Group exam for one software</button><button class="btn" id="newSlot">+ Custom slot</button></div></div><div id="sl"><div class="spin"></div></div>`);
   $('#newSlot').onclick = () => slotForm({}, slots);
+  $('#grpSlot').onclick = () => groupExam(slots);
   let L; try { L = await rpc('exam_admin_slots'); } catch (e) { return toast(errText(e), 'bad'); }
   const now = Date.now();
   const card = (s) => `<div class="card" style="padding:18px;${s.cancelled ? 'opacity:.5' : ''}"><div class="spread"><div>
@@ -749,7 +753,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=7');
+        const { practicalPDF } = await import('./pdf.js?v=8');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -757,4 +761,68 @@ async function pracPapers() {
   $('#pcf').onchange = (e) => { S.pcf = e.target.value; draw(); };
   $('#pcs').onchange = (e) => { S.pcs = e.target.value; draw(); };
   draw();
+}
+
+// ================================================================= results on hold (assignments pending)
+async function heldCard() {
+  const box = $('#heldBox'); if (!box) return;
+  let H; try { H = await rpc('exam_admin_held'); } catch { return; }
+  if (!H.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="card mt24"><div class="spread"><h3>Results on hold · ${H.length}</h3><span class="small muted">Released automatically when all assignments are submitted</span></div>
+    <div class="tscroll mt16" style="max-height:320px"><table class="tbl"><tr><th>Student</th><th>Software</th><th>Score</th><th>Assignments</th><th></th></tr>
+    ${H.map((h) => `<tr><td><b>${esc(h.name)}</b><div class="tiny dim">${esc(h.email)}</div></td><td>${esc(h.subject)}</td>
+      <td><span class="pill ${h.passed ? 'ok' : 'bad'}">${esc(h.grade)} · ${h.score}/${h.max}</span></td>
+      <td>${h.assign.submitted}/${h.assign.req} submitted</td>
+      <td><button class="btn sm" data-rel="${h.id}" title="Show the result now, without waiting for assignments">Release now</button></td></tr>`).join('')}</table></div></div>`;
+  $$('[data-rel]', box).forEach((b) => (b.onclick = async () => {
+    if (await confirmBox('Release this result now?', 'The student sees the grade and gets the result email, even though assignments are pending.', 'Release'))
+      run(() => rpc('exam_admin_result_release', { p_attempt: b.dataset.rel }), 'Result released', heldCard);
+  }));
+}
+
+// ================================================================= group exam: one software, many students, one click
+async function groupExam(after) {
+  const subs = META.subjects.filter((x) => ((x.bank?.E || 0) + (x.bank?.M || 0) + (x.bank?.H || 0)) >= 50);
+  const m = modal(`<h2>👥 Group exam</h2><p class="small muted" style="margin-top:4px">Pick a software — everyone who can take it right now is listed (date requests first). Choose a window and send. Their pending date requests are closed automatically.</p>
+    <label class="lb">Software</label><select class="inp" id="gs"><option value="">Choose…</option>${subs.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+    <div class="three"><div><label class="lb">Date</label><input class="inp" type="date" id="gd" value="${istLocal(new Date(Date.now() + 864e5).toISOString(), 'date')}"></div>
+      <div><label class="lb">From</label><input class="inp" type="time" id="ga" value="10:00"></div><div><label class="lb">To</label><input class="inp" type="time" id="gb" value="18:00"></div></div>
+    <div class="spread mt16"><label class="lb" style="margin:0">Students — <span id="gc">0</span> selected</label>
+      <div class="row" style="gap:6px"><button class="btn sm ghost" id="gall">All</button><button class="btn sm ghost" id="greq">Only date requests</button><button class="btn sm ghost" id="gnone">None</button></div></div>
+    <div class="picklist mt8" id="gl"><div class="small muted" style="padding:12px">Choose a software.</div></div>
+    <label class="lb">Note to students (optional)</label><input class="inp" id="gn" placeholder="e.g. Laptop with camera preferred · sit in a quiet room">
+    <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" id="gok" disabled>Schedule & email</button></div>`, 'wide');
+  let pool = [], sel = new Set();
+  const LBL = { requested: ['warn', 'Asked for'], missed: ['bad', 'Missed'], book: ['ok', 'Ready'], ready: ['ok', 'Open now'], scheduled: ['info', 'Already scheduled'] };
+  const draw = () => {
+    $('#gl', m.el).innerHTML = pool.length ? pool.map((x) => `<label><input type="checkbox" value="${x.id}" ${sel.has(x.id) ? 'checked' : ''}>
+      <span style="flex:1;min-width:0"><b>${esc(x.name)}</b> <span class="tiny dim">${esc(x.code || x.email)} · ${esc(x.course)}</span></span>
+      <span class="pill ${LBL[x.state]?.[0] || ''}">${LBL[x.state]?.[1] || x.state}${x.state === 'requested' && x.want_at ? ' ' + fmtDT(x.want_at) : ''}</span></label>`).join('')
+      : '<div class="small muted" style="padding:12px">Nobody can take this software right now.</div>';
+    $$('#gl input', m.el).forEach((c) => (c.onchange = () => { c.checked ? sel.add(c.value) : sel.delete(c.value); cnt(); }));
+    cnt();
+  };
+  const cnt = () => { $('#gc', m.el).textContent = sel.size; $('#gok', m.el).disabled = !sel.size; $('#gok', m.el).textContent = sel.size ? `Schedule & email ${sel.size}` : 'Schedule & email'; };
+  $('#gs', m.el).onchange = async (e) => {
+    $('#gl', m.el).innerHTML = '<div class="spin"></div>';
+    try { pool = await rpc('exam_admin_group_ready', { p_subject: e.target.value }); } catch (er) { pool = []; toast(errText(er), 'bad'); }
+    sel = new Set(pool.filter((x) => x.state !== 'scheduled').map((x) => x.id)); draw();
+  };
+  $('#gall', m.el).onclick = () => { pool.forEach((x) => sel.add(x.id)); draw(); };
+  $('#gnone', m.el).onclick = () => { sel.clear(); draw(); };
+  $('#greq', m.el).onclick = () => { sel = new Set(pool.filter((x) => x.state === 'requested').map((x) => x.id)); draw(); };
+  m.el.querySelector('[data-x]').onclick = m.close;
+  $('#gok', m.el).onclick = async () => {
+    const sj = $('#gs', m.el).value, d = $('#gd', m.el).value;
+    const name = META.subjects.find((x) => x.id === sj)?.name || 'Software';
+    const p = { id: '', title: name + ' exam', starts_at: toISO(d, $('#ga', m.el).value), ends_at: toISO(d, $('#gb', m.el).value), capacity: 20,
+      subject_id: sj, notes: $('#gn', m.el).value, members: [...sel], notify: true };
+    if (Date.parse(p.ends_at) <= Date.parse(p.starts_at)) return toast('The end time must be after the start time', 'bad');
+    $('#gok', m.el).disabled = true; $('#gok', m.el).textContent = 'Scheduling…';
+    try {
+      const r = await rpc('exam_admin_slot_save', { p });
+      const c = await rpc('exam_admin_group_close', { p_students: [...sel], p_subject: sj, p_slot: r.id });
+      m.close(); toast(`${name}: ${sel.size} students scheduled and emailed${c.closed ? ` · ${c.closed} requests closed` : ''}`, 'ok'); after && after();
+    } catch (e) { toast(errText(e), 'bad'); cnt(); }
+  };
 }

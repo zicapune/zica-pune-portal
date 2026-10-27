@@ -134,8 +134,9 @@ export async function briefPDF({ subject, items, student }) {
     font(8, 'bold'); col(C.ink); doc.text(FOOTER, W / 2, H - 8.5, { align: 'center' });
     font(8); col(C.mute); doc.text(`Page ${i} of ${n}`, W - M, H - 8.5, { align: 'right' });
   }
-  const fname = `ZICA_Pune_${subj.replace(/[^A-Za-z0-9]+/g, '_')}_Assignment_Briefs${items.length === 1 ? '_' + clean(items[0].code) : ''}.pdf`;
-  doc.save(fname);
+  const who = clean(student?.name || '').trim().replace(/\s+/g, '_');
+  const fname = `ZICA_${subj.replace(/^Adobe\s+/i, '').replace(/[^A-Za-z0-9]+/g, '_')}_Assignments${items.length === 1 ? '_' + clean(items[0].code).replace(/[^A-Za-z0-9-]+/g, '') : ''}${who ? '_' + who : ''}.pdf`;
+  savePDF(doc, fname);
   return fname;
 }
 
@@ -262,6 +263,17 @@ export async function practicalPDF(d) {
     font(8); col(C.mute); doc.text(`Page ${i} of ${n}`, W - M, H - 8.5, { align: 'right' });
   }
   const fname = clean(`ZICA_${COURSE_CODE(P.course_id)}_M${P.module}P${P.paper}_Option${O.no}_${String(S.name || '').replace(/\s+/g, '_')}.pdf`);
-  doc.save(fname);
+  savePDF(doc, fname);
   return fname;
+}
+
+// save with the proper file name on every device (some mobile browsers name jsPDF downloads "download.pdf")
+function savePDF(doc, fname) {
+  const blob = new Blob([doc.output('arraybuffer')], { type: 'application/pdf' });
+  const file = (() => { try { return new File([blob], fname, { type: 'application/pdf' }); } catch { return blob; } })();
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname; a.rel = 'noopener'; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 60000);
 }
