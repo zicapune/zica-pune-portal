@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=5';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=6';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -43,6 +43,7 @@ function route() {
   const p = location.hash.replace(/^#\/?/, '').split('/');
   S.tab = tabs().some((t) => t[0] === p[0]) ? p[0] : tabs()[0][0];
   if (p[0] === 'students' && p[1] !== undefined) S.course = decodeURIComponent(p[1] || '');
+  if (p[0] === 'prac' && p[1] === 'papers') return pracPapers();
   if (p[0] === 'prac' && p[1]) return pracMark(p[1]);
   ({ dash, requests, students, slots, prac, subs, banks, settings })[S.tab]();
 }
@@ -655,7 +656,8 @@ const driveEmbed = (u) => {
 };
 async function prac() {
   S.pst = S.pst || 'submitted';
-  frame(`<div class="phead"><h1>Practical papers</h1><div class="small muted">Students start a paper from the portal; the timer runs from that moment. Mark submissions against the rubric (150 marks).</div></div>
+  frame(`<div class="phead spread"><div><h1>Practical papers</h1><div class="small muted">Students start a paper from the portal; the timer runs from that moment. Mark submissions against the rubric (150 marks).</div></div>
+    <a class="btn" href="#/prac/papers">📦 Papers & asset packs</a></div>
     <div class="toolbar"><select class="inp" id="pst">${[['submitted', 'Waiting for marks'], ['in_progress', 'In progress now'], ['marked', 'Marked'], ['all', 'All']].map(([v, t]) => `<option value="${v}" ${S.pst === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input class="inp" id="pq" placeholder="Search student" style="flex:1" value="${esc(S.pq || '')}"></div><div id="pl"><div class="spin"></div></div>`);
   $('#pst').onchange = (e) => { S.pst = e.target.value; prac(); };
@@ -713,3 +715,46 @@ async function pracMark(id) {
 }
 
 boot();
+
+// ================================================================= practical papers & asset packs
+async function pracPapers() {
+  S.tab = 'prac';
+  frame(`<div class="phead"><div class="crumb"><a href="#/prac">Practicals</a> › <span>Papers & asset packs</span></div><h1>Papers & asset packs</h1><div class="small muted">An option is handed to students only once its asset-pack link is set — so nobody starts the timer without the files.
+      Put each pack in the academics Google Drive, share it as <b>Anyone with the link · Viewer</b>, and paste the folder link here. Use <b>Preview PDF</b> to read the paper exactly as students get it.</div></div>
+    <div class="toolbar"><select class="inp" id="pcf"><option value="">All courses</option></select>
+      <select class="inp" id="pcs"><option value="">All options</option><option value="missing">Missing asset link</option><option value="ready">Ready</option></select></div>
+    <div id="pp"><div class="spin"></div></div>`);
+  let C; try { C = await rpc('exam_admin_prac_catalog'); } catch (e) { return toast(errText(e), 'bad'); }
+  const courses = [...new Map(C.map((p) => [p.course_id, p.course])).entries()];
+  $('#pcf').innerHTML += courses.map(([id, n]) => `<option value="${id}" ${S.pcf === id ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  $('#pcs').value = S.pcs || '';
+  const draw = () => {
+    const opts = C.flatMap((p) => p.options);
+    const ready = opts.filter((o) => o.ready).length;
+    const rows = C.filter((p) => !S.pcf || p.course_id === S.pcf).map((p) => ({ ...p, options: p.options.filter((o) => !S.pcs || (S.pcs === 'ready' ? o.ready : !o.ready)) })).filter((p) => p.options.length);
+    $('#pp').innerHTML = `<div class="small muted" style="margin-bottom:10px">${ready} of ${opts.length} options ready · ${C.filter((p) => p.options.some((o) => o.ready)).length} of ${C.length} papers can be started</div>` +
+      (rows.map((p) => `<div class="card mt16"><div class="spread"><div><div class="tiny dim">${esc(p.course)} · Module ${p.module} · Paper ${p.paper}${p.spec_id ? ' · specialisation' : ''} · ${p.enrolled} enrolled</div><h3 style="margin:2px 0 0">${esc(p.title)}</h3></div>
+          <span class="pill ${p.options.some((o) => o.ready) ? 'ok' : 'warn'}">${p.options.some((o) => o.ready) ? 'Can be started' : 'Waiting for asset packs'}</span></div>
+        ${p.options.map((o) => `<div class="rv" style="margin-top:10px"><div class="spread" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px"><b>Option ${o.no} · ${esc(o.title)}</b>${o.attempts ? ` <span class="pill">${o.attempts} taken</span>` : ''}
+              <div class="tiny dim mt8">Pack needs: ${esc((o.assets || []).join(' · ') || '—')}</div></div>
+            <span class="pill ${o.ready ? 'ok' : 'warn'}">${o.ready ? 'Ready' : 'No asset link'}</span></div>
+          <div class="row mt8" style="gap:6px;flex-wrap:wrap"><input class="inp" style="flex:1;min-width:220px" data-url="${o.id}" placeholder="https://drive.google.com/drive/folders/…" value="${esc(o.asset_url || '')}">
+            ${META.is_admin ? `<button class="btn sm pri" data-save="${o.id}">Save link</button>` : ''}
+            ${o.asset_url ? `<a class="btn sm ghost" href="${esc(o.asset_url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}
+            <button class="btn sm" data-prev="${o.id}">Preview PDF</button></div></div>`).join('')}</div>`).join('') || '<div class="empty">Nothing matches.</div>');
+    $$('[data-save]').forEach((b) => (b.onclick = () => { const v = $(`[data-url="${b.dataset.save}"]`).value.trim();
+      run(() => rpc('exam_admin_prac_option_set', { p_option: +b.dataset.save, p_url: v, p_active: true }), v ? 'Asset link saved — option is live' : 'Link removed', async () => { C = await rpc('exam_admin_prac_catalog'); draw(); }); }));
+    $$('[data-prev]').forEach((b) => (b.onclick = async () => {
+      toast('Preparing the PDF…');
+      try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
+        const now = new Date();
+        const { practicalPDF } = await import('./pdf.js?v=6');
+        await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
+          student: { name: 'Sample Student', code: 'PREVIEW' } });
+      } catch (e) { toast(errText(e), 'bad'); } }));
+  };
+  $('#pcf').onchange = (e) => { S.pcf = e.target.value; draw(); };
+  $('#pcs').onchange = (e) => { S.pcs = e.target.value; draw(); };
+  draw();
+}
