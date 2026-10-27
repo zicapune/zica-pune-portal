@@ -373,14 +373,14 @@ function printBriefs(sj, items) {
   <style>@page{size:A4;margin:16mm 14mm 20mm}*{box-sizing:border-box}body{font:11pt/1.5 'Segoe UI',Roboto,Arial,sans-serif;color:#151827;margin:0}
   .hd{display:flex;align-items:center;gap:12px;border-bottom:3px solid #e3262d;padding-bottom:10px;margin-bottom:16px}
   .lg{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,#e3262d,#ff8a3d);color:#fff;font-weight:800;display:grid;place-items:center;font-size:12px;letter-spacing:.5px}
-  .hd h1{font-size:17pt;margin:0}.hd small{color:#666}.who{margin-left:auto;text-align:right;font-size:9pt;color:#444}
+  .lgi{height:54px;width:auto}.hd h1{font-size:17pt;margin:0}.hd small{color:#666}.who{margin-left:auto;text-align:right;font-size:9pt;color:#444}
   .a{border:1px solid #dcdfee;border-radius:10px;padding:14px 16px;margin:0 0 14px;page-break-inside:avoid}
   .tag{display:inline-block;font-size:8.5pt;padding:2px 8px;border-radius:99px;background:#f1f2f9;margin-right:6px;color:#333}
   h2{font-size:13pt;margin:8px 0 6px}h4{margin:10px 0 2px;font-size:9.5pt;text-transform:uppercase;letter-spacing:.06em;color:#e3262d}
   .pre{white-space:pre-wrap}a{color:#1a56db}ul{margin:4px 0 0 18px;padding:0}
   .ft{position:fixed;bottom:-12mm;left:0;right:0;text-align:center;font-size:8.5pt;color:#777;border-top:1px solid #ddd;padding-top:4px}
   .sub{font-size:9pt;color:#555;background:#fafafe;border:1px dashed #cfd3ea;border-radius:8px;padding:8px 10px;margin:0 0 16px}</style></head><body>
-  <div class="hd"><div class="lg">ZICA</div><div><h1>${esc(sj?.name)} · Assignment Briefs</h1><small>ZICA Pune · Kothrud</small></div><div class="who">${who}<br>${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div></div>
+  <div class="hd"><img class="lgi" src="${new URL('assets/brand/zica-print.png', location.href).href}" alt="ZICA"><div><h1>${esc(sj?.name)} · Assignment Briefs</h1><small>ZICA Pune · Kothrud</small></div><div class="who">${who}<br>${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div></div>
   <div class="sub">Submit each assignment as a Google Drive link (shared as “Anyone with the link can view”) on the ZICA Pune Portal → your course → ${esc(sj?.name)} → Assignments.</div>
   ${items.map((a) => `<div class="a"><span class="tag">${esc(a.code)}</span>${a.module ? `<span class="tag">${esc(a.module)}</span>` : ''}${a.level ? `<span class="tag">${esc(LVL_PILL[a.level] || a.level)}</span>` : ''}
     <h2>${esc(a.title)}</h2><div class="pre">${esc(a.brief || '')}</div>

@@ -138,24 +138,59 @@ export function device() {
 
 export const GOOGLE_SVG = `<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
 
-export function topBar(user, extra = '') {
+const B = 'assets/brand/';
+export function topBar(user, extra = '', tag = 'Exam portal') {
   return `<header class="top"><div class="wrap">
-    <a class="brand" href="./" style="text-decoration:none"><div class="logo">ZICA</div><div>ZICA Pune Portal<small>Software Exams</small></div></a>
+    <a class="brand" href="./" aria-label="ZICA Pune exam portal home">
+      <img class="full" src="${B}zica-horizontal-dark.png" alt="ZICA — Zee Institute of Creative Art">
+      <img class="markonly" src="${B}zica-mark.png" alt="ZICA">
+      <span class="tag"><b>Pune</b>${esc(tag)}</span></a>
     <div class="sp"></div>${extra}
     ${user ? `<div class="who"><span class="nm">${esc(user.name || user.email)}</span><div class="avatar">${esc(initials(user.name || user.email))}</div>
       <button class="btn sm ghost" data-signout title="Sign out">Sign out</button></div>` : ''}
   </div></header>`;
 }
 
-export function signInScreen(target, title = 'Software <span>Exams</span>', sub = 'Sign in with the Gmail ID registered with ZICA to see your courses and exams.') {
+const TILES = [
+  // [label, sub, size%, x%, y%, rot, colour]
+  ['Ps', 'Photoshop', 19, 4, 6, -11, 'linear-gradient(150deg,#31a8ff,#0b5cad)'],
+  ['Ai', 'Illustrator', 16, 27, 0, 8, 'linear-gradient(150deg,#ff9a00,#c45f00)'],
+  ['Ae', 'After Effects', 17, 49, 4, -6, 'linear-gradient(150deg,#9999ff,#4b46c9)'],
+  ['', '', 22, 70, 2, 12, 'g'],
+  ['Pr', 'Premiere', 15, 82, 30, -9, 'linear-gradient(150deg,#ea77ff,#8e2bb0)'],
+  ['', '', 15, 0, 34, 7, 'g2'],
+  ['Maya', 'Animation', 18, 2, 60, -7, 'linear-gradient(150deg,#28b6c5,#0f6a77)'],
+  ['UE', 'Unreal', 16, 23, 78, 9, 'linear-gradient(150deg,#4a4f5a,#23262d)'],
+  ['Nk', 'Nuke · VFX', 17, 47, 77, -10, 'linear-gradient(150deg,#ffcc33,#c98a00)'],
+  ['Fg', 'Figma · UI/UX', 16, 70, 70, 6, 'linear-gradient(150deg,#a259ff,#5b2bb5)'],
+  ['', '', 12, 88, 60, -14, 'g'],
+  ['AI', 'Gen AI', 13, 86, 8, 4, 'linear-gradient(150deg,#ec6a22,#b4440c)'],
+];
+export function signInScreen(target, title = 'Your software exams, on your schedule.', sub = 'Book the date and time that suit you, take your theory exam with your camera on, and see your grade the moment you submit.') {
+  const tiles = TILES.map(([t, s, z, x, y, r, c], i) => `<div class="tile ${c.length < 4 ? c : ''}" style="--s:${z};--x:${x};--y:${y};--r:${r}deg;--d:${i};${c.length < 4 ? '' : '--c:' + c}" aria-hidden="true">${esc(t)}${s ? `<small>${esc(s)}</small>` : ''}</div>`).join('');
   target.innerHTML = topBar(null) + `
-  <section class="hero"><div class="box">
-    <div class="logo" style="width:64px;height:64px;border-radius:18px;margin:0 auto;font-size:18px">ZICA</div>
-    <h1>${title}</h1><p>${sub}</p>
-    <button class="gbtn" id="gsign">${GOOGLE_SVG} Continue with Google</button>
-    <div class="features"><div><b>60</b>minutes</div><div><b>50</b>questions</div><div><b>3</b>levels</div></div>
-    <p class="small dim mt24">Camera, timer and tab-switch monitoring are part of every exam.</p>
-  </div></section>`;
+  <main class="land">
+    <section class="copy">
+      <span class="loc"><img src="${B}zica-mark.png" alt="">ZICA Pune · Kothrud</span>
+      <h1>${title}</h1>
+      <p class="lede">${sub}</p>
+      <button class="gbtn" id="gsign">${GOOGLE_SVG} Continue with Google</button>
+      <p class="fine">Use the Gmail ID you gave at admission. Not on our records yet? Sign in anyway — you can ask the Academic Head to link your account.</p>
+      <ol class="steps">
+        <li data-n="1"><b>Book</b><span>Pick a date and time within the next 30 days.</span></li>
+        <li data-n="2"><b>Get confirmed</b><span>The Academic Head approves it and you get an email.</span></li>
+        <li data-n="3"><b>Take the exam</b><span>50 questions, 60 minutes, camera on. Results instantly.</span></li>
+      </ol>
+    </section>
+    <div class="wall" aria-hidden="true">${tiles}
+      <div class="ticket"><div class="tt"><i>Ps</i><div><div class="tiny muted">Theory exam</div><h3>Adobe Photoshop</h3></div></div>
+        <div class="when"><div>Date<b>Wed, 28 Oct</b></div><div>Time<b>11:00 AM</b></div><div>Paper<b>Medium</b></div></div>
+        <span class="ok">✓ Confirmed by the Academic Head</span>
+        <div class="bar"><i></i></div><div class="tiny muted mt8">32 of 50 answered · 21:40 left</div></div>
+    </div>
+  </main>
+  <footer class="landfoot"><span>© ${new Date().getFullYear()} ZICA Pune · Kothrud — exams are monitored by camera, timer and screen focus.</span>
+    <img src="${B}zeelearn.png" alt="Zee Learn"></footer>`;
   target.querySelector('#gsign').onclick = () => signIn().catch((e) => toast(errText(e), 'bad'));
 }
 
