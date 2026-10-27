@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=8';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=9';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -293,7 +293,7 @@ async function studentDrawer(id, after) {
           <div class="spread"><b>${esc(c.course)}</b>${c.specs.length ? `<select class="inp" style="padding:6px 8px;width:auto" data-spec="${c.course_id}">
             <option value="" ${!c.spec ? 'selected' : ''} disabled>Not chosen yet</option>${c.specs.map((x) => `<option value="${x.id}" ${c.spec === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}</div>
           ${c.papers.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th>Paper</th><th>State</th><th>Result</th></tr>${c.papers.map((p) => `<tr>
-            <td><b>M${p.module} P${p.paper}</b> <span class="small">${esc(p.title)}</span></td>
+            <td><b>${String(p.id || '').startsWith('msw_') ? 'Software' : `M${p.module} P${p.paper}`}</b> <span class="small">${esc(p.title)}</span></td>
             <td><span class="pill ${PST_CLS[p.state] || ''}" title="${esc((p.missing || []).map((m) => m.name).join(', '))}">${esc(PST_LBL[p.state] || p.state)}</span></td>
             <td>${p.attempt ? (p.attempt.total != null ? `<a href="#/prac/${p.attempt.id}">${p.attempt.total}/${p.marks} · ${esc(p.attempt.grade || '')}</a>` : `<a href="#/prac/${p.attempt.id}">open ›</a>`) : '<span class="dim">—</span>'}</td></tr>`).join('')}</table></div>` : ''}</div>`).join('')}</div>` : ''}
 
@@ -476,7 +476,8 @@ async function requests() {
       <input class="inp" type="time" data-dt="${b.id}" value="${b.want_at ? istLocal(b.want_at, 'time') : '10:00'}" style="width:auto">
       ${!b.subject_id ? `<select class="inp" data-dsj="${b.id}" style="width:auto"><option value="">Subject…</option>${META.subjects.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}
       <input class="inp" data-dn="${b.id}" placeholder="Note to student (optional)" style="flex:1;min-width:180px">
-      <button class="btn ok" data-ap="${b.id}">Approve</button><button class="btn bad" data-rj="${b.id}">Decline</button></div></div>`;
+      <button class="btn ok" data-ap="${b.id}">Approve</button><button class="btn bad" data-rj="${b.id}">Decline</button></div>
+    ${META.is_admin ? `<label class="row small mt8" style="gap:6px"><input type="checkbox" data-skip="${b.id}" data-sst="${b.student_id}" data-ssj="${b.subject_id || ''}"> Skip assignment check for this student &amp; software (result and certificate released without assignments)</label>` : ''}</div>`;
   const cRow = (c) => `<div class="card" style="padding:16px"><div class="spread"><div><span class="pill warn">Link Google account</span>${c.source === 'email' ? ' <span class="pill mark">by email</span>' : ''}
       <h3 class="mt8">${esc(c.name || '—')}</h3><div class="small muted">Signed in as <b style="color:var(--ink)">${esc(c.google_email)}</b>${c.phone ? ' · ' + esc(c.phone) : ''}${c.course ? ' · ' + esc(c.course) : ''}${c.old_email ? ' · old email ' + esc(c.old_email) : ''} · ${ago(c.created_at)}</div></div></div>
     <div class="row mt16" style="gap:8px;flex-wrap:wrap"><select class="inp" data-cs="${c.id}" style="flex:1;min-width:220px"><option value="">Link to student…</option>
@@ -497,14 +498,21 @@ async function requests() {
   $('#bapp') && ($('#bapp').onclick = async () => {
     if (!sel.size) return toast('Tick the requests to approve first.', 'bad');
     if (!(await confirmBox(`Approve ${sel.size} request(s)?`, 'Each student gets a 2-hour slot at the time they asked for, and an email.', 'Approve'))) return;
-    run(() => rpc('exam_admin_booking_decide', { p_ids: [...sel], p_action: 'approve' }), `Approved ${sel.size}`, requests);
+    run(async () => { await skipFor([...sel]); return rpc('exam_admin_booking_decide', { p_ids: [...sel], p_action: 'approve' }); }, `Approved ${sel.size}`, requests);
   });
   $$('[data-ap]').forEach((b) => (b.onclick = () => {
     const id = b.dataset.ap, d = $(`[data-dd="${id}"]`).value, t = $(`[data-dt="${id}"]`).value;
     if (!d || !t) return toast('Pick a date and time.', 'bad');
-    run(() => rpc('exam_admin_booking_decide', { p_ids: [+id], p_action: 'approve', p_at: toISO(d, t), p_subject: $(`[data-dsj="${id}"]`)?.value || null,
-      p_note: $(`[data-dn="${id}"]`).value.trim() || null }), 'Approved — student will be emailed', requests);
+    run(async () => { await skipFor([+id]); return rpc('exam_admin_booking_decide', { p_ids: [+id], p_action: 'approve', p_at: toISO(d, t), p_subject: $(`[data-dsj="${id}"]`)?.value || null,
+      p_note: $(`[data-dn="${id}"]`).value.trim() || null }); }, 'Approved — student will be emailed', requests);
   }));
+  async function skipFor(ids) {
+    for (const id of ids) {
+      const c = $(`[data-skip="${id}"]`); if (!c || !c.checked) continue;
+      const sj = c.dataset.ssj || $(`[data-dsj="${id}"]`)?.value; if (!sj) continue;
+      await rpc('exam_admin_assign_skip', { p_student: c.dataset.sst, p_subject: sj, p_skip: true });
+    }
+  }
   $$('[data-rj]').forEach((b) => (b.onclick = async () => {
     const id = b.dataset.rj, note = $(`[data-dn="${id}"]`).value.trim();
     if (!note && !(await confirmBox('Decline without a note?', 'The student will be told to pick another time. Add a note to explain why.', 'Decline anyway', true))) return;
@@ -671,7 +679,7 @@ async function prac() {
     const rows = L.filter((x) => !q || x.name.toLowerCase().includes(q) || (x.code || '').includes(q) || x.email.includes(q));
     $('#pl').innerHTML = !rows.length ? '<div class="empty">Nothing here.</div>' : `<div class="tscroll"><table class="tbl"><tr><th>Student</th><th>Paper</th><th>Level</th><th>Started</th><th>Deadline / submitted</th><th>Check-ins</th><th>Status</th><th></th></tr>
       ${rows.map((x) => `<tr><td><b>${esc(x.name)}</b><div class="tiny dim">${esc(x.code || x.email)}</div></td>
-        <td><b>${esc(x.title)}</b><div class="tiny dim">${esc(x.course)} · M${x.module} P${x.paper} · Option ${x.option_no}</div></td>
+        <td><b>${esc(x.title)}</b><div class="tiny dim">${esc(x.course)} · ${String(x.paper_id || x.id || '').startsWith('msw_') || x.course_id === 'modular' ? 'Software practical' : `M${x.module} P${x.paper}`} · Option ${x.option_no}</div></td>
         <td>${LV3[x.level]}</td><td class="small" style="white-space:nowrap">${fmtDT(x.started_at)}</td>
         <td class="small" style="white-space:nowrap">${x.submitted_at ? fmtDT(x.submitted_at) + (x.late_min ? `<div style="color:#ffb3c0">${x.late_min} min late</div>` : '<div class="tiny" style="color:#86efac">on time</div>') : 'by ' + fmtDT(x.deadline_at)}</td>
         <td>${x.checkpoints}/2</td>
@@ -737,7 +745,7 @@ async function pracPapers() {
     const ready = opts.filter((o) => o.ready).length;
     const rows = C.filter((p) => !S.pcf || p.course_id === S.pcf).map((p) => ({ ...p, options: p.options.filter((o) => !S.pcs || (S.pcs === 'ready' ? o.ready : !o.ready)) })).filter((p) => p.options.length);
     $('#pp').innerHTML = `<div class="small muted" style="margin-bottom:10px">${ready} of ${opts.length} options ready · ${C.filter((p) => p.options.some((o) => o.ready)).length} of ${C.length} papers can be started</div>` +
-      (rows.map((p) => `<div class="card mt16"><div class="spread"><div><div class="tiny dim">${esc(p.course)} · Module ${p.module} · Paper ${p.paper}${p.spec_id ? ' · specialisation' : ''} · ${p.enrolled} enrolled</div><h3 style="margin:2px 0 0">${esc(p.title)}</h3></div>
+      (rows.map((p) => `<div class="card mt16"><div class="spread"><div><div class="tiny dim">${p.course_id === 'modular' ? 'Software practical · shown to Modular students and to courses without their own papers · no asset pack needed' : `${esc(p.course)} · Module ${p.module} · Paper ${p.paper}${p.spec_id ? ' · specialisation' : ''} · ${p.enrolled} enrolled`}</div><h3 style="margin:2px 0 0">${esc(p.title)}</h3></div>
           <span class="pill ${p.options.some((o) => o.ready) ? 'ok' : 'warn'}">${p.options.some((o) => o.ready) ? 'Can be started' : 'Waiting for asset packs'}</span></div>
         ${p.options.map((o) => `<div class="rv" style="margin-top:10px"><div class="spread" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
             <div style="flex:1;min-width:220px"><b>Option ${o.no} · ${esc(o.title)}</b>${o.attempts ? ` <span class="pill">${o.attempts} taken</span>` : ''}
@@ -753,7 +761,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=8');
+        const { practicalPDF } = await import('./pdf.js?v=9');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));

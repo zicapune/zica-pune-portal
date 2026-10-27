@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=8';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=9';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -417,7 +417,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=8'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=9'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -934,12 +934,18 @@ function bindSpec(c, pr) {
     catch (e) { toast(errText(e), 'bad'); }
   }));
 }
+const isSW = (p) => String(p.id || '').startsWith('msw_');
+const swOf = (p) => (p.reqs || [])[0] || (Object.values(PR).flatMap((c) => c.papers || []).find((x) => x.id === p.id)?.reqs || [])[0] || { id: String(p.id).slice(4), short: String(p.title || p.id).replace(/^Adobe\s+/, '').slice(0, 2) };
+const pLabel = (p) => (isSW(p) ? 'Software practical' : `Module ${p.module} · Paper ${p.paper}`);
+const pIcon = (p) => (isSW(p) ? swTile(swOf(p).id, swOf(p).short || swOf(p).name || '') : `<div class="sicon prac"><small>M${p.module}</small>P${p.paper}</div>`);
 function pracBlock(c, pr) {
   if (!pr.papers?.length) return '';
-  const mods = [...new Set(pr.papers.map((p) => p.module))];
+  const key = (p) => (isSW(p) ? 'sw' : p.module);
+  const mods = [...new Set(pr.papers.map(key))];
+  const allSW = pr.papers.every(isSW);
   return `<h2 class="sech">Practical papers</h2>
-    <p class="small muted" style="margin:-4px 0 12px">150 marks each. The timer starts the moment you open a paper — you get the question paper and the asset pack together.</p>
-    ${mods.map((m) => `<div class="modrow"><div class="modlab">Module ${m}</div><div class="grid subjects">${pr.papers.filter((p) => p.module === m).map((p) => pracCard(p)).join('')}</div></div>`).join('')}`;
+    <p class="small muted" style="margin:-4px 0 12px">150 marks each. ${allSW ? 'One practical per software — it unlocks once you pass that software\'s theory exam. The timer starts the moment you open a paper.' : 'The timer starts the moment you open a paper — you get the question paper and the asset pack together.'}</p>
+    ${mods.map((m) => `<div class="modrow"><div class="modlab">${m === 'sw' ? 'Software' : 'Module ' + m}</div><div class="grid subjects">${pr.papers.filter((p) => key(p) === m).map((p) => pracCard(p)).join('')}</div></div>`).join('')}`;
 }
 function pracCard(p) {
   const a = p.attempt; let status = '', action = '';
@@ -959,9 +965,9 @@ function pracCard(p) {
   }
   const best = a?.grade ? `<span class="gradechip ${a.passed ? '' : 'f'}">${esc(a.grade)}</span>` : '';
   return `<div class="scard ${p.state === 'ready' || p.state === 'in_progress' ? 'ready' : ''} ${['theory', 'preparing', 'spec'].includes(p.state) ? 'locked' : ''}">
-    <div class="sicon prac"><small>M${p.module}</small>P${p.paper}</div>
-    <div class="body"><div class="seq">MODULE ${p.module} · PAPER ${p.paper}</div><div class="spread"><h4>${esc(p.title)}</h4>${best}</div>
-      ${(p.reqs || []).length ? `<div class="swmix">${p.reqs.map((x) => { const c = SW[x.id] || ['#8a8f99', '#3b3f47']; return `<i style="--c1:${c[0]};--c2:${c[1]}" title="${esc(x.name)}${x.any ? ' (any one)' : ''}">${esc(x.short || x.id)}</i>`; }).join('')}</div>` : ''}
+    ${pIcon(p)}
+    <div class="body"><div class="seq">${pLabel(p).toUpperCase()}</div><div class="spread"><h4>${esc(p.title)}</h4>${best}</div>
+      ${(p.reqs || []).length && !isSW(p) ? `<div class="swmix">${p.reqs.map((x) => { const c = SW[x.id] || ['#8a8f99', '#3b3f47']; return `<i style="--c1:${c[0]};--c2:${c[1]}" title="${esc(x.name)}${x.any ? ' (any one)' : ''}">${esc(x.short || x.id)}</i>`; }).join('')}</div>` : ''}
       <div class="tiny dim">${p.marks} marks · ${hrs(p.work_min)} of work · ${hrs(p.window_min)} to submit</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 12px">${status}</div>${action}</div></div>`;
 }
@@ -971,8 +977,8 @@ function bindPrac(c, pr) {
 function pracStartModal(c, p) {
   let level = 'medium';
   const ends = new Date(Date.now() + p.window_min * 60000);
-  const m = modal(`<div class="small muted">Module ${p.module} · Paper ${p.paper} · ${p.marks} marks</div><h2>${esc(p.title)}</h2>
-    <p class="muted small">You'll get one of several paper options at random, with its asset pack. Choose your level — it changes how much you must deliver and the highest grade you can earn.</p>
+  const m = modal(`<div class="small muted">${pLabel(p)} · ${p.marks} marks</div><h2>${esc(p.title)}</h2>
+    <p class="muted small">You'll get one of several paper options at random${isSW(p) ? ' — no asset pack: you use your own photos, footage or recordings, as the paper explains' : ', with its asset pack'}. Choose your level — it changes how much you must deliver and the highest grade you can earn.</p>
     <div class="grid levels">${['easy', 'medium', 'hard'].map((k) => `<button class="lvl ${k === level ? 'on' : ''}" data-lvl="${k}"><h3>${LVL3[k][0]}</h3>
       <div class="cap">${LVL3[k][1]}</div><div class="tiny muted">highest grade</div></button>`).join('')}</div>
     <div class="rules mt16">${[
@@ -1005,8 +1011,8 @@ async function pracView(id) {
   const scoreRows = d.scores ? (C.rubric || []).map(([k, mx]) => `<tr><td>${esc(k)}</td><td style="text-align:right"><b>${d.scores[k] ?? 0}</b> / ${mx}</td></tr>`).join('') : '';
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <a href="#/c/${encodeURIComponent(P.course_id)}">${esc(P.course)}</a> › <span>Practical</span></div>
-      <div class="spread"><div class="row"><div class="sicon prac"><small>M${P.module}</small>P${P.paper}</div><div><h1>${esc(P.title)}</h1>
-        <div class="muted small">Module ${P.module} · Paper ${P.paper} · Option ${O.no} · ${LVL3[d.level][0]} level · ${P.marks} marks</div></div></div>
+      <div class="spread"><div class="row">${pIcon({ ...P, reqs: [] })}<div><h1>${esc(P.title)}</h1>
+        <div class="muted small">${pLabel(P)} · Option ${O.no} · ${LVL3[d.level][0]} level · ${P.marks} marks</div></div></div>
         ${d.status === 'in_progress' ? `<div class="ptimer"><small>Time left to submit</small><b id="ptl">--:--</b><small>by ${fmtDT(d.deadline_at)}</small></div>` : ''}</div></div>
     ${d.status === 'marked' ? `<div class="card"><div class="spread"><div><div class="small muted">Result</div><h2>${d.total} / ${P.marks} · ${esc(d.grade)}</h2></div>
         <span class="pill ${d.passed ? 'ok' : 'bad'}">${d.passed ? 'Passed' : 'Not passed'}</span></div>
@@ -1014,7 +1020,7 @@ async function pracView(id) {
     <div class="grid two mt16">
       <div class="card"><h3>1 · Your question paper</h3><p class="small muted">Option ${O.no}: ${esc(O.title)}</p>
         <button class="btn pri" id="pdl">⬇ Download question paper (PDF)</button>
-        ${O.asset_url ? `<a class="btn mt8" style="display:flex" href="${esc(O.asset_url)}" target="_blank" rel="noopener">📦 Open asset pack</a>` : `<div class="small muted mt8">No asset pack for this paper — everything you need is in the PDF.</div>`}</div>
+        ${O.asset_url ? `<a class="btn mt8" style="display:flex" href="${esc(O.asset_url)}" target="_blank" rel="noopener">📦 Open asset pack</a>` : `<div class="small muted mt8">${C.no_assets ? 'No asset pack — use your own material. The PDF lists what you need under “What you need”.' : 'No asset pack for this paper — everything you need is in the PDF.'}</div>`}</div>
       <div class="card"><h3>2 · Work-in-progress check-ins</h3><p class="small muted">Upload a screenshot of your screen (or a photo of your sheet) to Drive and paste the link when each check-in opens.</p>
         ${cps.map((c, i) => `<div class="cp ${c.done ? 'done' : ''}"><div><b>Check-in ${i + 1}</b><div class="tiny muted">${c.done ? 'Sent ' + fmtTime(c.done.at) : 'Opens ' + fmtTime(c.at)}</div></div>
           ${c.done ? '<span class="pill ok">✓ Sent</span>' : d.status === 'in_progress' ? `<button class="btn sm" data-cp="${i}" ${Date.now() + off < c.at - 10 * 60000 ? 'disabled' : ''}>Add link</button>` : '<span class="pill">Missed</span>'}</div>`).join('')}</div>
@@ -1027,7 +1033,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=8'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=9'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

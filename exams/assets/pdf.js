@@ -163,7 +163,9 @@ export async function practicalPDF(d) {
   doc.setFillColor(...C.orange); doc.rect(0, 70, W, 1.6, 'F');
   doc.addImage(logo, 'PNG', M, 11, 58, 58 / 4.85);
   doc.addImage(zee, 'PNG', W - M - 22, 11.5, 22, 22 / 2.16);
-  font(10); col([200, 197, 190]); doc.text(clean(`Practical examination · ${P.course} · Module ${P.module}, Paper ${P.paper}`), M, 38);
+  const SWP = String(P.id || '').startsWith('msw_');
+  const PL = SWP ? 'Software practical' : `Module ${P.module}, Paper ${P.paper}`, PS = SWP ? 'Practical' : `M${P.module} P${P.paper}`;
+  font(10); col([200, 197, 190]); doc.text(clean(SWP ? `Practical examination · ${PL}` : `Practical examination · ${P.course} · ${PL}`), M, 38);
   font(21, 'bold'); col(C.white); const tl = doc.splitTextToSize(title, CW - 40); doc.text(tl, M, 48, { lineHeightFactor: 1.15 });
   font(9.5); col([200, 197, 190]);
   doc.text(clean(`Option ${O.no}: ${O.title}`), M, 48 + tl.length * 8 + 1);
@@ -177,13 +179,14 @@ export async function practicalPDF(d) {
   cells.forEach(([k, v], i) => { const x = M + 6 + i * (CW / 4); font(8); col(C.mute); doc.text(k, x, y + 7.5); font(10, 'bold'); col(i === 3 ? C.orange : C.ink); doc.text(doc.splitTextToSize(v, CW / 4 - 8)[0], x, y + 14); });
   y += 27;
   font(9.2); col(C.body);
-  const rules = doc.splitTextToSize(clean(`Work time: about ${hrs(P.work_min)}. You have ${hrs(P.window_min)} from the start to submit, including breaks, rendering and uploading. Upload a work-in-progress screenshot when the portal asks (2 h and 4 h). Use only the supplied assets and your own work; declare any AI tool you were allowed to use. Late submissions are flagged with the minutes late.`), CW);
+  const rules = doc.splitTextToSize(clean(`Work time: about ${hrs(P.work_min)}. You have ${hrs(P.window_min)} from the start to submit, including breaks, rendering and uploading. Upload a work-in-progress screenshot when the portal asks (2 h and 4 h). ${K.no_assets ? 'Use your own photos, footage or recordings (or free-licence material you credit) and your own work' : 'Use only the supplied assets and your own work'}; declare any AI tool you were allowed to use. Late submissions are flagged with the minutes late.`), CW);
   doc.text(rules, M, y, { lineHeightFactor: 1.35 }); y += rules.length * 4.4 + 4;
 
   const pageHeader = () => {
     doc.addImage(mark, 'PNG', M, 9, 11, 11 / 1.6);
-    font(9, 'bold'); col(C.ink); doc.text(clean(`${COURSE_CODE(P.course_id)} · M${P.module} P${P.paper}`), M + 14, 14);
-    font(9); col(C.mute); doc.text(clean(`${title} · Option ${O.no} · ${S.name || ''}`), M + 14 + doc.getTextWidth(clean(`${COURSE_CODE(P.course_id)} · M${P.module} P${P.paper}`)) + 3, 14);
+    const ph = clean(SWP ? PS : `${COURSE_CODE(P.course_id)} · ${PS}`);
+    font(9, 'bold'); col(C.ink); doc.text(ph, M + 14, 14);
+    font(9); col(C.mute); doc.text(clean(`${title} · Option ${O.no} · ${S.name || ''}`), M + 14 + doc.getTextWidth(ph) + 3, 14);
     doc.setDrawColor(...C.line); doc.setLineWidth(0.3); doc.line(M, 19, W - M, 19);
     return 27;
   };
@@ -237,7 +240,7 @@ export async function practicalPDF(d) {
   }
   // ---------- assets
   if (K.assets?.length || O.asset_url) {
-    h2('Asset pack');
+    h2(K.no_assets && !O.asset_url ? 'What you need' : 'Asset pack');
     list(K.assets || []);
     if (O.asset_url) { font(9.6); col(C.link); need(6); doc.textWithLink('Open the asset pack (Google Drive)', M, y, { url: O.asset_url }); y += 7; }
   }
@@ -262,7 +265,7 @@ export async function practicalPDF(d) {
     font(8, 'bold'); col(C.ink); doc.text(FOOTER, W / 2, H - 8.5, { align: 'center' });
     font(8); col(C.mute); doc.text(`Page ${i} of ${n}`, W - M, H - 8.5, { align: 'right' });
   }
-  const fname = clean(`ZICA_${COURSE_CODE(P.course_id)}_M${P.module}P${P.paper}_Option${O.no}_${String(S.name || '').replace(/\s+/g, '_')}.pdf`);
+  const fname = clean(`ZICA_${SWP ? String(P.title || '').split(' —')[0].replace(/^Adobe\s+/, '').replace(/\s+/g, '') + '_Practical' : COURSE_CODE(P.course_id) + '_M' + P.module + 'P' + P.paper}_Option${O.no}_${String(S.name || '').replace(/\s+/g, '_')}.pdf`);
   savePDF(doc, fname);
   return fname;
 }
