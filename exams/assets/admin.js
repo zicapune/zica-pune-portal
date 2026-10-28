@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=11';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=12';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -626,9 +626,9 @@ async function settings() {
       <div><label class="lb">Admin alert emails go to</label><input class="inp" id="an" value="${esc((st.admin_notify || []).join(', '))}"></div>
     </div><button class="btn pri mt24" id="sv">Save settings</button></div>
     <div class="card mt16"><div class="spread"><h3>Faculty logins</h3><button class="btn sm" id="addF">+ Add faculty</button></div>
-      <p class="small muted">Faculty sign in at the same admin link and only see assignment reviews for their subjects (no subjects = all). They don't see scheduling, students or settings.</p>
-      <div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th>Name</th><th>Email</th><th>Subjects</th><th>Active</th><th></th></tr>
-      ${META.staff.map((f) => `<tr><td><b>${esc(f.name || '')}</b></td><td class="small">${esc(f.email)}</td><td class="small">${f.subjects.length ? f.subjects.map((x) => esc(subjShort(x))).join(', ') : '<span class="dim">all</span>'}</td>
+      <p class="small muted">Staff sign in at this admin link. <b>Faculty</b> review and mark only their ticked subjects · <b>Viewer</b> sees their subjects, read-only · <b>Manager</b> sees all normal subjects and can mark · <b>Observer</b> sees all normal subjects, read-only. Only admins schedule, unlock or change settings. Private (APP) subjects are visible only if ticked.</p>
+      <div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th>Name</th><th>Email</th><th>Role</th><th>Subjects</th><th>Active</th><th></th></tr>
+      ${META.staff.map((f) => `<tr><td><b>${esc(f.name || '')}</b></td><td class="small">${esc(f.email)}</td><td><span class="pill">${esc(f.role || 'faculty')}</span></td><td class="small">${f.subjects.length ? f.subjects.map((x) => esc(subjShort(x))).join(', ') : `<span class="dim">${['manager', 'observer'].includes(f.role) ? 'all normal subjects' : 'none'}</span>`}</td>
         <td>${f.active ? '<span class="pill ok">yes</span>' : '<span class="pill">no</span>'}</td><td><button class="btn sm" data-ef="${esc(f.email)}">Edit</button></td></tr>`).join('')}</table></div></div>
     <div class="card mt16"><h3>Levels & grades</h3><p class="small muted">Easy ${st.levels.easy.E}/${st.levels.easy.M}/${st.levels.easy.H} (max ${st.levels.easy.cap}) · Medium ${st.levels.medium.E}/${st.levels.medium.M}/${st.levels.medium.H} (max ${st.levels.medium.cap}) · Hard ${st.levels.hard.E}/${st.levels.hard.M}/${st.levels.hard.H} (max ${st.levels.hard.cap}) · Marks ${st.marks.E}/${st.marks.M}/${st.marks.H}</p>
       <div class="bands">${st.bands.map((b) => `<span><b>${b[0]}</b>${b[1]}%+</span>`).join('')}</div></div>
@@ -643,17 +643,18 @@ async function settings() {
 }
 function staffForm(f) {
   const cur = new Set(f.subjects || []);
-  const m = modal(`<h2>${f.email ? 'Edit faculty' : 'Add faculty'}</h2>
+  const m = modal(`<h2>${f.email ? 'Edit staff' : 'Add staff'}</h2>
     <div class="two"><div><label class="lb">Name</label><input class="inp" id="fn" value="${esc(f.name || '')}"></div>
       <div><label class="lb">Gmail</label><input class="inp" id="fe" value="${esc(f.email || '')}" ${f.email ? 'disabled' : ''}></div></div>
-    <label class="lb">Subjects they review (none ticked = all)</label><div class="picklist" style="max-height:260px">${META.subjects.map((x) => `<label><input type="checkbox" value="${x.id}" ${cur.has(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join('')}</div>
+    <label class="lb">Role</label><select class="inp" id="fr">${[['faculty', 'Faculty — reviews & marks ticked subjects'], ['viewer', 'Viewer — ticked subjects, read-only'], ['manager', 'Manager — all normal subjects, can mark'], ['observer', 'Observer — all normal subjects, read-only']].map(([v, t]) => `<option value="${v}" ${(f.role || 'faculty') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label class="lb">Subjects</label><div class="picklist" style="max-height:260px">${META.subjects.map((x) => `<label><input type="checkbox" value="${x.id}" ${cur.has(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join('')}</div>
     <label class="row small mt16"><input type="checkbox" id="fa" ${f.active ? 'checked' : ''}> Active (can sign in)</label>
     <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Save</button></div>`, 'wide');
   m.el.querySelector('[data-x]').onclick = m.close;
   m.el.querySelector('[data-ok]').onclick = () => {
     const email = (f.email || $('#fe', m.el).value).trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return toast('Enter a valid Gmail.', 'bad');
-    m.close(); run(() => rpc('exam_admin_staff_save', { p: { email, name: $('#fn', m.el).value.trim(), subjects: $$('.picklist input:checked', m.el).map((x) => x.value), active: $('#fa', m.el).checked } }), 'Faculty saved', settings);
+    m.close(); run(() => rpc('exam_admin_staff_save', { p: { email, name: $('#fn', m.el).value.trim(), subjects: $$('.picklist input:checked', m.el).map((x) => x.value), role: $('#fr', m.el).value, active: $('#fa', m.el).checked } }), 'Staff saved', settings);
   };
 }
 
@@ -762,7 +763,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=11');
+        const { practicalPDF } = await import('./pdf.js?v=12');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
