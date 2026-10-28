@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=10';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=11';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -219,6 +219,8 @@ async function courseView(cid) {
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <span>${esc(c.name)}</span></div>
       <h1>${esc(c.name)}</h1>
       <p class="muted" style="margin:6px 0 0">Theory exams run in course order — 50 questions · 60 minutes · camera on. Practical papers open once you pass the theory exams they need.</p></div>
+    ${String(c.id).startsWith('app3d_') ? `<div class="card mt16" style="border-color:color-mix(in srgb,var(--a1) 45%,var(--line))"><h3 style="margin-bottom:6px">🎓 Your Advanced Professional Program — a separate certificate</h3>
+      <p class="small muted" style="margin:0">These papers are <b style="color:var(--ink)">separate</b> from your ZICA course exams and lead to a <b style="color:var(--ink)">second certificate</b>. Please complete <b style="color:var(--ink)">both</b> — your ZICA course exams and every paper below. Each paper is set at the Medium level, with 2 attempts. Same rules apply: camera on, no tab switching.</p></div>` : ''}
     ${specBlock(c, pr)}
     <h2 class="sech">Theory exams</h2>
     ${c.subjects.length ? `<div class="grid subjects">${list}</div>` : `<div class="empty mt24">No subjects are unlocked here yet. Contact the Academic Head.</div>`}
@@ -425,7 +427,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=10'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=11'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -1041,7 +1043,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=10'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=11'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
