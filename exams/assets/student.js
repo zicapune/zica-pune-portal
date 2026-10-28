@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=13';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=14';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -250,8 +250,8 @@ async function courseView(cid) {
       <h1>${esc(c.name)}</h1>
       <p class="muted" style="margin:6px 0 0">Theory exams run in course order — 50 questions · ${ME.settings.duration || 60} minutes · camera on. Practical papers open once you pass the theory exams they need.</p></div>
     ${certLine(c, true)}
-    ${String(c.id).startsWith('app3d_') ? `<div class="card mt16" style="border-color:color-mix(in srgb,var(--a1) 45%,var(--line))"><h3 style="margin-bottom:6px">🎓 Your Advanced Professional Program — a separate certificate</h3>
-      <p class="small muted" style="margin:0">These papers are <b style="color:var(--ink)">separate</b> from your ZICA course exams and lead to a <b style="color:var(--ink)">second certificate</b>. Please complete <b style="color:var(--ink)">both</b> — your ZICA course exams and every paper below. Each paper is set at the Medium level, with 2 attempts. Same rules apply: camera on, no tab switching.</p></div>` : ''}
+    ${String(c.id).startsWith('app3d_') ? `<div class="card mt16" style="border-color:color-mix(in srgb,var(--a1) 45%,var(--line))"><h3 style="margin-bottom:6px">🎓 Advanced Professional Program in Animation and VFX — a separate certificate</h3>
+      <p class="small muted" style="margin:0">These papers are <b style="color:var(--ink)">separate</b> from your other course exams and lead to a <b style="color:var(--ink)">second certificate</b>. Please complete <b style="color:var(--ink)">both</b> — your course exams and every paper below. Each paper is set at the Medium level, with 2 attempts. Same rules apply: camera on, no tab switching.</p></div>` : ''}
     ${specBlock(c, pr)}
     <h2 class="sech">Theory exams</h2>
     ${c.subjects.length ? `<div class="grid subjects">${list}</div>` : `<div class="empty mt24">No subjects are unlocked here yet. Contact the Academic Head.</div>`}
@@ -464,7 +464,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=13'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=14'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -558,6 +558,25 @@ async function setupView(cid, sid) {
   };
 }
 
+// student asks for extra time on a running / held exam
+function askTime(attemptId, done) {
+  let mins = 15;
+  const m = modal(`<div class="askt"><h2>Request extra time</h2>
+    <p class="small muted">Tell the Academic Head what happened. They will add time now or reopen your exam at a set time. You will get an email.</p>
+    <label class="lb">Minutes needed</label><div class="chips" id="rqM">${[15, 20, 30, 50].map((n) => `<button class="chip t ${n === mins ? 'on' : ''}" data-m="${n}">${n} min</button>`).join('')}</div>
+    <label class="lb">What happened? *</label><textarea class="inp" rows="3" id="rqR" maxlength="900" placeholder="e.g. Power cut from 11:10 to 11:40, my Wi-Fi was down."></textarea>
+    <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-go>Send request</button></div></div>`);
+  $$('[data-m]', m.el).forEach((b) => (b.onclick = () => { mins = +b.dataset.m; $$('[data-m]', m.el).forEach((x) => x.classList.toggle('on', x === b)); }));
+  m.el.querySelector('[data-x]').onclick = () => { m.close(); done && done(); };
+  m.el.querySelector('[data-go]').onclick = async (e) => {
+    const why = $('#rqR', m.el).value.trim();
+    if (why.length < 10) return toast('Please explain what happened (at least 10 characters).', 'bad');
+    e.target.disabled = true;
+    try { const r = await api('exam_time_request', { p_attempt: attemptId, p_minutes: mins, p_reason: why }); m.close(); toast('Request sent to the Academic Head.', 'ok'); done && done(r); }
+    catch (er) { toast(errText(er), 'bad'); e.target.disabled = false; }
+  };
+}
+
 function goFull() { const d = document.documentElement; try { (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d, { navigationUI: 'hide' })?.catch?.(() => {}); } catch {} }
 function exitFull() { try { if (document.fullscreenElement) document.exitFullscreen?.(); } catch {} }
 
@@ -596,8 +615,12 @@ function startExam(p, course) {
   $('#rulesB').onclick = () => {
     const m = modal(`<div class="spread"><h2 style="margin:0">Exam rules</h2><button class="btn sm pri" data-ok>Back to exam</button></div>
       <p class="small muted">Your timer keeps running while this is open.</p>${rulesList()}${pracInfo(course.id, p.subject.id)}
+      <div class="card mt16" style="padding:14px"><b>Lost time because of a power cut, network or device problem?</b>
+        <div class="small muted mt8">Ask the Academic Head for extra time. Keep writing meanwhile — the timer keeps running until it is approved.</div>
+        <button class="btn sm mt8" data-rq>Request extra time</button></div>
       <button class="btn pri block mt16" data-ok>Back to my exam</button>`);
     m.el.querySelectorAll('[data-ok]').forEach((x) => (x.onclick = () => { m.close(); goFull(); }));
+    m.el.querySelector('[data-rq]').onclick = () => { m.close(); askTime(p.attempt_id, () => goFull()); };
   };
 
   const renderQ = () => {
@@ -692,7 +715,8 @@ function startExam(p, course) {
       try {
         const st = await api('exam_status', { p_attempt: p.attempt_id });
         X.offset = Date.parse(st.server_now) - Date.now(); X.deadline = Date.parse(st.deadline_at);
-        if (st.status === 'done' || X.deadline - (Date.now() + X.offset) <= 0) finish('time_up');
+        if (st.status === 'paused') showPaused(st);
+        else if (st.status === 'done' || X.deadline - (Date.now() + X.offset) <= 0) finish('time_up');
       } catch { finish('time_up'); }
       X.checkingTime = false;
     }
@@ -736,26 +760,60 @@ function startExam(p, course) {
     m.el.classList.add('viol');
     m.el.querySelector('[data-ok]').onclick = () => { m.close(); goFull(); };
   };
-  const showPaused = () => {
-    X.status = 'paused';
-    if ($('.ov.paused')) return;
-    $('.ov.viol')?.remove();
-    const m = modal(`<div class="bigic b">⏸</div><h2>Exam paused</h2>
+  const pausedHtml = (st) => {
+    const req = st.request && st.request.status === 'pending' ? st.request : null;
+    const reqLine = req ? `<div class="notice mt16">Request sent for <b>${req.minutes} extra minutes</b> — waiting for the Academic Head. This screen updates by itself.</div>` : '';
+    if (st.hold_reason === 'scheduled') return `<div class="bigic b">⏸</div><h2>Your exam reopens later</h2>
+      <p class="muted">The Academic Head has given you more time. Your exam reopens on</p>
+      <p style="font-size:20px;font-weight:700;margin:6px 0">${fmtDT(st.resume_at)}</p>
+      <p class="small muted">Keep this page open or come back at that time, signed in with this Gmail, camera on. Your answers are saved.</p>`;
+    if (st.hold_reason === 'disconnected') return `<div class="bigic b">⏸</div><h2>Your exam is on hold</h2>
+      <p class="muted">Your time ran out while you were offline, so your exam has <b>not</b> been graded yet. Your answers are saved.</p>
+      ${reqLine || `<p class="small">If a power cut, network or device problem cost you time, ask for extra time below. The Academic Head will reopen your exam now or at a set time.</p><button class="btn pri block mt8" data-rq>Request extra time</button>`}`;
+    return `<div class="bigic b">⏸</div><h2>Exam paused</h2>
       <p class="muted">You crossed the warning limit, so your exam is locked until the Academic Head reviews it.</p>
-      <p style="color:#ffb3c0">Your timer is still running. Contact the Academic Head now.</p>
-      <div class="small dim mt16">This screen unlocks automatically once your exam is resumed.</div>`, 'badm');
-    m.el.classList.add('paused');
-    const poll = setInterval(async () => {
+      <p style="color:#ffb3c0">Your timer is still running. Contact the Academic Head now.</p>${reqLine}
+      <div class="small dim mt16">This screen unlocks automatically once your exam is resumed.</div>`;
+  };
+  const showPaused = (st0) => {
+    X.status = 'paused';
+    $('.ov.viol')?.remove();
+    let m = $('.ov.paused') ? { el: $('.ov.paused'), close: () => $('.ov.paused')?.remove() } : null;
+    const draw = (st) => {
+      if (!m) { m = modal('', 'badm'); m.el.classList.add('paused'); }
+      m.el.querySelector('.modal').innerHTML = pausedHtml(st || {});
+      const b = m.el.querySelector('[data-rq]'); if (b) b.onclick = () => askTime(p.attempt_id, (r) => draw(r));
+    };
+    draw(st0);
+    if (X.pausePoll) return;
+    X.pausePoll = setInterval(async () => {
       try {
         const st = await api('exam_status', { p_attempt: p.attempt_id });
         X.offset = Date.parse(st.server_now) - Date.now(); X.deadline = Date.parse(st.deadline_at);
-        if (st.status === 'in_progress') { clearInterval(poll); m.close(); X.status = 'in_progress'; X.viol = st.violations; toast('Your exam has been resumed. Stay on this screen.', 'ok'); goFull(); renderQ(); }
-        if (st.status === 'done') { clearInterval(poll); m.close(); finish('time_up'); }
+        if (st.status === 'in_progress') { clearInterval(X.pausePoll); X.pausePoll = null; $('.ov.paused')?.remove(); X.status = 'in_progress'; X.viol = st.violations; toast('Your exam is open again. Stay on this screen.', 'ok'); goFull(); renderQ(); }
+        else if (st.status === 'done') { clearInterval(X.pausePoll); X.pausePoll = null; $('.ov.paused')?.remove(); finish('time_up'); }
+        else if (!$('.ov .askt')) draw(st);
       } catch {}
     }, 6000);
-    X.cleanup.push(() => clearInterval(poll));
+    X.cleanup.push(() => { clearInterval(X.pausePoll); X.pausePoll = null; });
   };
-  if (X.status === 'paused') showPaused();
+  if (X.status === 'paused') showPaused(p);
+
+  // heartbeat: keeps the Academic Head informed, picks up extra time added by the admin
+  const ping = async () => {
+    if (X.ended || DEMO) return;
+    try {
+      const st = await api('exam_ping', { p_attempt: p.attempt_id });
+      X.offset = Date.parse(st.server_now) - Date.now();
+      const nd = Date.parse(st.deadline_at);
+      if (nd - X.deadline > 30000 && st.status === 'in_progress') toast(`The Academic Head added ${Math.round((nd - X.deadline) / 60000)} minutes to your exam.`, 'ok');
+      X.deadline = nd;
+      if (st.status === 'paused' && X.status !== 'paused') showPaused(st);
+      if (st.status === 'done' && !X.ended) finish('time_up');
+    } catch {}
+  };
+  const pingT = setInterval(ping, 30000); ping();
+  X.cleanup.push(() => clearInterval(pingT));
 
   const onVis = () => { if (document.hidden) { violation('tab_switch'); evt('hidden'); } else evt('visible'); };
   let blurT;
@@ -1083,7 +1141,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=13'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=14'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

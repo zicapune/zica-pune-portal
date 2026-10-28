@@ -16,6 +16,11 @@ export const sb = window.supabase
   : null;
 
 const ERR = {
+  exam_finished: 'This exam has already finished.',
+  already_finished: 'This exam has already finished — it cannot be reopened.',
+  exam_on_hold: 'This exam is on hold. Ask for extra time; the Academic Head will reopen it.',
+  bad_minutes: 'Choose a valid number of minutes.',
+  reason_needed: 'Please explain what happened (at least 10 characters).',
   not_signed_in: 'Please sign in again.',
   not_registered: "This email isn't in ZICA records.",
   blocked: 'Your account is on hold. Please contact the Academic Head.',

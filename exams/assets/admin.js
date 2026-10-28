@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=13';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=14';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -81,10 +81,8 @@ async function dash() {
           <td>${esc(l.subject)}</td><td>${LV[l.level]}</td><td>${l.answered}/${l.total}</td>
           <td><span class="pill ${l.violations ? 'warn' : ''}">${l.violations}</span></td>
           <td style="font-variant-numeric:tabular-nums"><b data-dl="${l.deadline_at}">${mmss(Date.parse(l.deadline_at) - Date.now() - off)}</b></td>
-          <td>${l.status === 'paused' ? '<span class="pill bad">Paused</span>' : '<span class="pill ok"><span class="dot pulse"></span>Writing</span>'}</td>
-          <td><div class="row" style="gap:6px;justify-content:flex-end">${l.status === 'paused'
-            ? `<button class="btn sm ok" data-act="resume" data-a="${l.attempt_id}">Resume</button>`
-            : `<button class="btn sm" data-act="extend" data-a="${l.attempt_id}">+ time</button>`}
+          <td>${liveStatus(l)}${l.request ? ` <span class="pill warn">asks +${l.request} min</span>` : ''}</td>
+          <td><div class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm ${l.request || l.hold_reason ? 'pri' : ''}" data-act="time" data-a="${l.attempt_id}">⏱ Time</button>
             <button class="btn sm bad" data-act="end" data-a="${l.attempt_id}">End</button></div></td></tr>`).join('')}</table></div>`
         : '<div class="empty mt16">Nobody is writing an exam right now.</div>'}</div>
       <div id="heldBox"></div><div id="planBox"></div>
@@ -119,7 +117,57 @@ const feedDetail = (f) => {
   return '';
 };
 
+const liveStatus = (l) => l.hold_reason === 'disconnected' ? '<span class="pill bad">On hold · went offline</span>'
+  : l.hold_reason === 'scheduled' ? `<span class="pill info">Reopens ${fmtDT(l.resume_at)}</span>`
+  : l.status === 'paused' ? '<span class="pill bad">Paused · warnings</span>'
+  : l.offline ? `<span class="pill warn">Offline ${Math.max(1, Math.round((Date.now() - Date.parse(l.last_seen)) / 60000))} min</span>`
+  : '<span class="pill ok"><span class="dot pulse"></span>Writing</span>';
+
+// add time now, or reopen at a set time — shows how much time the student has already used
+async function timeDialog(id, after) {
+  let I; try { I = await rpc('exam_admin_attempt_info', { p_attempt: id }); } catch (e) { return toast(errText(e), 'bad'); }
+  const pend = (I.requests || []).find((r) => r.status === 'pending');
+  const hold = I.hold_reason === 'disconnected' ? 'On hold — time ran out while offline' : I.hold_reason === 'scheduled' ? `Reopens ${fmtDT(I.resume_at)}` : I.status === 'paused' ? 'Paused (warnings)' : 'Writing';
+  let mins = pend ? pend.minutes : Math.max(15, Math.ceil((I.left_min || 0) / 5) * 5);
+  const local = (d) => { const t = new Date(d.getTime() + 330 * 60000); return t.toISOString().slice(0, 16); };
+  const m = modal(`<h2>Exam time · ${esc(I.name)}</h2><div class="small muted">${esc(I.subject)} · ${esc(I.level)} · ${esc(I.email)}</div>
+    <div class="grid kpi mt16" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+      <div><b>${I.used_min} min</b><small>Time used (of ${I.duration}${I.extra_min ? ' + ' + I.extra_min : ''})</small></div>
+      <div><b>${I.left_min} min</b><small>Left at last activity</small></div>
+      <div><b>${I.answered}/${I.total}</b><small>Answered</small></div>
+      <div><b>${I.violations}${I.face_violations ? ' · ' + I.face_violations + ' face' : ''}</b><small>Warnings</small></div></div>
+    <div class="small mt16"><span class="pill">${esc(hold)}</span> Started ${fmtDT(I.started_at)}${I.last_seen ? ` · last active ${fmtDT(I.last_seen)}${I.offline_min > 1 ? ` (${I.offline_min} min ago)` : ''}` : ''}</div>
+    ${(I.requests || []).length ? `<div class="mt16">${I.requests.map((r) => `<div class="small" style="padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-top:6px">
+      <b>${r.status === 'pending' ? 'Asks' : esc(r.status)} +${r.minutes} min</b> · ${fmtDT(r.at)}<div class="muted">${esc(r.reason || '')}</div></div>`).join('')}</div>` : ''}
+    <label class="lb">Minutes to add</label>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><input class="inp" id="tm" type="number" min="1" max="300" value="${mins}" style="width:110px">
+      ${[15, 20, 30, 50].map((n) => `<button class="btn sm" data-add="${n}">+${n}</button>`).join('')}<button class="btn sm ghost" data-add="0">Reset</button></div>
+    <div class="tiny dim mt8">Added on top of any time still left on the clock.</div>
+    <label class="lb">When can the student continue?</label>
+    <label class="row small" style="gap:8px"><input type="radio" name="tw" value="now" checked> Reopen now</label>
+    <label class="row small mt8" style="gap:8px"><input type="radio" name="tw" value="later"> Reopen at <input class="inp" id="tat" type="datetime-local" value="${local(new Date(Date.now() + 86400000))}" style="width:auto;padding:6px 10px"> IST</label>
+    <label class="lb">Note to the student (optional)</label><input class="inp" id="tn" maxlength="300" placeholder="e.g. Please sit near your router this time.">
+    <div class="row mt24" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      ${pend ? '<button class="btn ghost bad" data-dec>Decline request</button>' : '<span></span>'}
+      <div class="row" style="gap:8px"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Add time</button></div></div>`, 'wide');
+  $$('[data-add]', m.el).forEach((b) => (b.onclick = () => { const n = +b.dataset.add; $('#tm', m.el).value = n ? (+$('#tm', m.el).value || 0) + n : 0; }));
+  m.el.querySelector('[data-x]').onclick = m.close;
+  const dec = m.el.querySelector('[data-dec]');
+  if (dec) dec.onclick = () => { m.close(); run(() => rpc('exam_admin_time', { p_attempt: id, p_minutes: 0, p_at: null, p_request: pend.id, p_note: $('#tn', m.el).value.trim() || null }), 'Request declined — student emailed', after); };
+  m.el.querySelector('[data-ok]').onclick = () => {
+    const n = +$('#tm', m.el).value;
+    if (!(n >= 1 && n <= 300)) return toast('Enter 1–300 minutes.', 'bad');
+    const later = m.el.querySelector('input[name=tw]:checked').value === 'later';
+    const at = later ? new Date($('#tat', m.el).value + ':00+05:30') : null;
+    if (later && !(at > new Date())) return toast('Pick a future date and time.', 'bad');
+    m.close();
+    run(() => rpc('exam_admin_time', { p_attempt: id, p_minutes: n, p_at: at ? at.toISOString() : null, p_request: pend ? pend.id : null, p_note: $('#tn', m.el).value.trim() || null }),
+      later ? `+${n} min · reopens ${fmtDT(at)} — student emailed` : `+${n} min · exam open now — student emailed`, after);
+  };
+}
+
 async function attemptAction(id, act, after) {
+  if (act === 'time') return timeDialog(id, after);
   if (act === 'end') {
     if (!(await confirmBox('End this exam now?', 'It will be scored on the answers given so far.', 'End exam', true))) return;
     return run(() => rpc('exam_admin_attempt', { p_attempt: id, p_action: 'end', p_minutes: 0 }), 'Exam ended', after);
@@ -484,7 +532,12 @@ async function requests() {
       ${c.suggest.map((s) => `<option value="${s.id}">${esc(s.name)} · ${esc(s.email)} · ${esc(shortStatus(s.status))}</option>`).join('')}<option value="__search">Search another student…</option></select>
       <input class="inp" data-cn="${c.id}" placeholder="Note (optional)" style="flex:1;min-width:160px">
       <button class="btn ok" data-cl="${c.id}">Link</button><button class="btn bad" data-cr="${c.id}">Decline</button></div></div>`;
+  const help = (ME.live || []).filter((l) => l.request || l.hold_reason || l.offline);
   $('#rq').innerHTML = `
+    ${help.length ? `<h3 class="mt8">⏱ Exams needing your attention · ${help.length}</h3><div class="grid mt16">${help.map((l) => `<div class="card rqc" style="padding:16px">
+      <div class="spread" style="gap:12px;flex-wrap:wrap"><div><b>${esc(l.name)}</b> · ${esc(l.subject)} <div class="row mt8" style="gap:6px;flex-wrap:wrap">${liveStatus(l)}${l.request ? ` <span class="pill warn">asks +${l.request} min</span>` : ''}
+        <span class="pill">${l.answered}/${l.total} answered</span></div></div>
+        <button class="btn pri" data-tm="${l.attempt_id}">⏱ Review time</button></div></div>`).join('')}</div>` : ''}
     <div class="spread mt8"><h3>Exam dates · ${pend.length} waiting</h3>${pend.length ? `<div class="row" style="gap:8px"><label class="row small"><input type="checkbox" id="ball"> Select all</label>
       <button class="btn sm ok" id="bapp">Approve selected at requested time</button></div>` : ''}</div>
     <div class="grid mt16">${pend.map(bRow).join('') || '<div class="empty">No exam-date requests waiting.</div>'}</div>
@@ -493,6 +546,7 @@ async function requests() {
       ${done.map((b) => `<tr><td><a href="#" data-stu="${b.student_id}">${esc(b.name)}</a></td><td>${esc(b.subject || '—')}</td><td>${b.want_at ? fmtDT(b.want_at) : '—'}</td><td>${esc(b.kind)}</td>
         <td><span class="pill ${b.status === 'approved' ? 'ok' : b.status === 'rejected' ? 'bad' : ''}">${esc(b.status)}</span></td><td class="small">${b.decided_at ? ago(b.decided_at) : ''}</td></tr>`).join('')}</table></div>` : ''}`;
   $$('[data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu); }));
+  $$('[data-tm]').forEach((x) => (x.onclick = () => timeDialog(x.dataset.tm, requests)));
   $$('[data-bs]').forEach((c) => (c.onchange = () => (c.checked ? sel.add(+c.dataset.bs) : sel.delete(+c.dataset.bs))));
   $('#ball') && ($('#ball').onchange = (e) => $$('[data-bs]').forEach((c) => { c.checked = e.target.checked; c.onchange(); }));
   $('#bapp') && ($('#bapp').onclick = async () => {
@@ -765,7 +819,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=13');
+        const { practicalPDF } = await import('./pdf.js?v=14');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
