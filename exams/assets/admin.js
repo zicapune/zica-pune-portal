@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=9';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=10';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -87,7 +87,7 @@ async function dash() {
             : `<button class="btn sm" data-act="extend" data-a="${l.attempt_id}">+ time</button>`}
             <button class="btn sm bad" data-act="end" data-a="${l.attempt_id}">End</button></div></td></tr>`).join('')}</table></div>`
         : '<div class="empty mt16">Nobody is writing an exam right now.</div>'}</div>
-      <div id="heldBox"></div>
+      <div id="heldBox"></div><div id="planBox"></div>
       <div class="grid mt24" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
         <div><h3>Courses</h3><div class="grid courses">${ME.courses.map((co) => `
           <a class="ccard" data-fam="${co.family}" href="#/students/${encodeURIComponent(co.id)}" style="text-decoration:none;min-height:150px">
@@ -99,7 +99,7 @@ async function dash() {
     $$('[data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu); }));
     $$('[data-act]').forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, draw)));
     $('#grpX').onclick = () => groupExam(draw);
-    heldCard();
+    heldCard(); planCard(draw);
   };
   await draw();
   timer = setInterval(() => { if (!$('.ov') && !$('.drawer') && S.tab === 'dash') draw(); }, 15000);
@@ -709,6 +709,7 @@ async function pracMark(id) {
       <div class="spread mt16"><b>Total</b><b id="ptot" style="font-size:22px;font-family:var(--disp)">0 / ${P.marks}</b></div>
       <label class="lb">Feedback for the student</label><textarea class="inp" id="pfb" rows="5">${esc(d.feedback || '')}</textarea>
       <button class="btn pri block mt16" id="psave" ${d.status === 'in_progress' ? 'disabled' : ''}>${d.status === 'marked' ? 'Update marks' : 'Save marks & email result'}</button>
+      <div class="tiny dim mt8" style="text-align:center">${META.is_admin ? 'Marks go to the student by email.' : 'Kindly note: your marks are submitted to the Academic Head, who does the final review of every grade.'}</div>
       ${d.submit_note ? `<div class="ex mt16">Student note: ${esc(d.submit_note)}</div>` : ''}
       <details class="mt16"><summary class="small muted">The paper this student got</summary><div class="small mt8" style="white-space:pre-wrap">${esc(K.brief || '')}</div>
         ${(K.questions || []).map((q) => `<div class="small mt8"><b>Q${q.no}. ${esc(q.title || '')} (${q.marks})</b><br>${esc(q.task || '')}</div>`).join('')}
@@ -761,7 +762,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=9');
+        const { practicalPDF } = await import('./pdf.js?v=10');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -772,6 +773,24 @@ async function pracPapers() {
 }
 
 // ================================================================= results on hold (assignments pending)
+let PLAN = null, PLAN_AT = 0;
+async function planCard(after) {
+  const box = $('#planBox'); if (!box) return;
+  if (!PLAN || Date.now() - PLAN_AT > 120000) { try { PLAN = await rpc('exam_admin_planner'); PLAN_AT = Date.now(); } catch (e) { PLAN = null; return; } }
+  if (!$('#planBox')) return;
+  const rows = (PLAN || []).filter((x) => x.pending || x.scheduled);
+  $('#planBox').innerHTML = `<div class="card mt24"><div class="spread"><div><h3>📅 Exam planner</h3>
+      <div class="small muted">Students who still need each software (not passed, retakes left). Pick one and schedule a bulk exam in two clicks.</div></div>
+      <button class="btn sm ghost" id="planR">↻ Refresh</button></div>
+    ${rows.length ? `<div class="tscroll mt16" style="max-height:420px"><table class="tbl"><tr><th>Software</th><th title="Never attempted">New</th><th title="Failed, retake left">Retake</th><th>Asked for a date</th><th>Already scheduled</th><th></th></tr>
+      ${rows.map((x) => `<tr><td><b>${esc(x.name)}</b></td>
+        <td><b>${x.fresh}</b></td><td>${x.retake ? `<span class="pill warn">${x.retake}</span>` : '0'}</td>
+        <td>${x.requested ? `<span class="pill info">${x.requested}</span>` : '0'}</td><td class="small muted">${x.scheduled}</td>
+        <td style="text-align:right"><button class="btn sm pri" data-plan="${x.id}">Schedule ${x.pending}</button></td></tr>`).join('')}</table></div>`
+      : '<div class="empty mt16">Everyone is up to date.</div>'}</div>`;
+  $('#planR').onclick = () => { PLAN = null; planCard(after); };
+  $$('[data-plan]').forEach((b) => (b.onclick = () => groupExam(() => { PLAN = null; after && after(); }, b.dataset.plan)));
+}
 async function heldCard() {
   const box = $('#heldBox'); if (!box) return;
   let H; try { H = await rpc('exam_admin_held'); } catch { return; }
@@ -789,7 +808,7 @@ async function heldCard() {
 }
 
 // ================================================================= group exam: one software, many students, one click
-async function groupExam(after) {
+async function groupExam(after, pre) {
   const subs = META.subjects.filter((x) => ((x.bank?.E || 0) + (x.bank?.M || 0) + (x.bank?.H || 0)) >= 50);
   const m = modal(`<h2>👥 Group exam</h2><p class="small muted" style="margin-top:4px">Pick a software — everyone who can take it right now is listed (date requests first). Choose a window and send. Their pending date requests are closed automatically.</p>
     <label class="lb">Software</label><select class="inp" id="gs"><option value="">Choose…</option>${subs.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
@@ -819,6 +838,7 @@ async function groupExam(after) {
   $('#gall', m.el).onclick = () => { pool.forEach((x) => sel.add(x.id)); draw(); };
   $('#gnone', m.el).onclick = () => { sel.clear(); draw(); };
   $('#greq', m.el).onclick = () => { sel = new Set(pool.filter((x) => x.state === 'requested').map((x) => x.id)); draw(); };
+  if (pre) setTimeout(() => { $('#gs', m.el).value = pre; $('#gs', m.el).dispatchEvent(new Event('change')); }, 0);
   m.el.querySelector('[data-x]').onclick = m.close;
   $('#gok', m.el).onclick = async () => {
     const sj = $('#gs', m.el).value, d = $('#gd', m.el).value;

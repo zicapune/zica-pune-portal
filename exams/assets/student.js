@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=9';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=10';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -61,18 +61,26 @@ function notRegistered() {
   const staffBtn = ME.is_admin || ME.is_staff ? `<a class="btn pri mt16" href="admin.html">Open ${ME.is_admin ? 'admin' : 'faculty'} panel</a>` : '';
   const pending = cl && cl.status === 'pending';
   const linkedNote = cl && cl.status === 'rejected' ? `<p class="small" style="color:#ffb3c0">Your last request was declined${cl.admin_note ? ': ' + esc(cl.admin_note) : ''}. Please meet the Academic Head.</p>` : '';
-  app.innerHTML = topBar({ email: ME.email, name: ME.email }) + `<section class="hero"><div class="box" style="max-width:560px">
-    <div class="bigic w" style="margin:0 auto 14px">?</div>
-    <h2>${pending ? 'Request sent ✓' : "This Google account isn't on ZICA records"}</h2>
-    <p class="muted mt8"><b style="color:var(--ink)">${esc(ME.email)}</b> ${pending ? 'is waiting for the Academic Head to link it to your student record. You’ll get an email once it’s done.' : 'isn’t registered yet. Sign in with the Gmail ID you gave at admission — or ask the Academic Head to link this one.'}</p>
+  app.innerHTML = topBar({ email: ME.email, name: ME.email }) + `<section class="hero"><div class="box" style="max-width:600px">
+    <div class="bigic w" style="margin:0 auto 14px">${pending ? '✓' : '?'}</div>
+    <h2>${pending ? 'Request sent — please wait for approval' : 'You are signed in, but this Gmail is not on ZICA records'}</h2>
+    <p class="muted mt8">Signed in as <b style="color:var(--ink)">${esc(ME.email)}</b></p>
+    ${pending ? `<p class="muted mt8">The Academic Head will link this Gmail to your student record. You will get an email as soon as it is approved — then just open this page again.</p>
+      <div class="small dim mt16">Request sent ${fmtDT(cl.created_at)}</div>` : `
+    <div class="card mt24" style="text-align:left"><h3 style="margin-bottom:6px">What to do now</h3>
+      <ol class="small" style="margin:0;padding-left:18px;line-height:1.7">
+        <li><b>Did you give a different Gmail at admission?</b> Tap <b>Use a different Google account</b> below and sign in with that Gmail.</li>
+        <li><b>Want to use this Gmail instead?</b> Fill the form below. The Academic Head will approve it and you will get an email.</li>
+        <li><b>Faculty?</b> Your account is added by the Academic Head only. Please contact the Academic Head (academics.zicapune@gmail.com) to get access — do not fill the student form.</li>
+      </ol></div>
     ${linkedNote}${staffBtn}
-    ${pending ? `<div class="small dim mt16">Sent ${fmtDT(cl.created_at)}</div>` : `
-    <div class="card mt24" style="text-align:left"><h3>Ask the Academic Head to link this account</h3>
-      <label class="lb">Your full name (as at admission)</label><input class="inp" id="clN" maxlength="120" placeholder="e.g. Priya Sharma">
-      <label class="lb">Mobile number</label><input class="inp" id="clP" maxlength="20" inputmode="tel" placeholder="10-digit mobile">
-      <label class="lb">Your course</label><input class="inp" id="clC" maxlength="200" placeholder="e.g. Program in Graphic Design">
-      <label class="lb">Email you gave at admission (if different)</label><input class="inp" id="clE" maxlength="120" placeholder="optional">
-      <button class="btn pri block mt16" id="clGo">Send request</button></div>`}
+    <div class="card mt16" style="text-align:left"><h3>Student form — link <span style="color:var(--a1)">${esc(ME.email)}</span> to my record</h3>
+      <p class="tiny dim" style="margin:4px 0 6px">This Gmail will become your login for exams, results and certificates.</p>
+      <label class="lb">Your full name (as at admission) *</label><input class="inp" id="clN" maxlength="120" placeholder="e.g. Priya Sharma">
+      <label class="lb">Mobile number *</label><input class="inp" id="clP" maxlength="20" inputmode="tel" placeholder="10-digit mobile">
+      <label class="lb">Your course</label><input class="inp" id="clC" maxlength="200" placeholder="e.g. Program in Graphic Design / Modular Photoshop">
+      <label class="lb">Email you gave at admission (if you remember)</label><input class="inp" id="clE" maxlength="120" placeholder="optional — helps us find you faster">
+      <button class="btn pri block mt16" id="clGo">Send for approval</button></div>`}
     <button class="btn ghost mt16" data-signout>Use a different Google account</button></div></section>`;
   bindTop();
   const go = $('#clGo'); if (!go) return;
@@ -84,7 +92,7 @@ function notRegistered() {
     try {
       await api('exam_claim', { p_name: v('#clN'), p_phone: v('#clP'), p_course: v('#clC'), p_old_email: v('#clE') });
       ME = await api('exam_me'); notRegistered(); toast('Request sent to the Academic Head.', 'ok');
-    } catch (e) { toast(errText(e), 'bad'); go.disabled = false; go.textContent = 'Send request'; }
+    } catch (e) { toast(errText(e), 'bad'); go.disabled = false; go.textContent = 'Send for approval'; }
   };
 }
 
@@ -417,7 +425,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=9'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=10'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -536,7 +544,7 @@ function startExam(p, course) {
   X.idx = Math.max(0, qs.findIndex((q) => X.ans[String(q.id)] == null));
   qs.forEach((q, i) => { if (X.ans[String(q.id)] != null || i < X.idx) X.visited.add(String(q.id)); });
 
-  app.innerHTML = `<div data-fam="${course.family}">
+  app.innerHTML = `<div class="xwrap" data-fam="${course.family}">
     <div class="xbar"><div class="wrap">
       <div class="xsub">${swTile(p.subject.id, course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}
         <div style="min-width:0"><b>${esc(p.subject.name)}</b><div class="small muted">${cap(p.level)} level · ${esc(ME.student.name)}</div></div></div>
@@ -569,7 +577,7 @@ function startExam(p, course) {
     $('#nxt').onclick = () => (X.idx === qs.length - 1 ? submitAsk() : go(X.idx + 1));
     renderPal();
   };
-  const go = (i) => { if (i < 0 || i >= qs.length) return; X.idx = i; renderQ(); $('#pal').classList.remove('open'); window.scrollTo(0, 0); };
+  const go = (i) => { if (i < 0 || i >= qs.length) return; X.idx = i; renderQ(); $('#pal').classList.remove('open'); window.scrollTo(0, 0); $('#qc .opts')?.scrollTo?.(0, 0); };
   const counts = () => {
     let a = 0, m = 0, am = 0, v = 0;
     qs.forEach((q) => { const id = String(q.id); const has = X.ans[id] != null; const mk = X.marked.has(id);
@@ -1016,7 +1024,7 @@ async function pracView(id) {
         ${d.status === 'in_progress' ? `<div class="ptimer"><small>Time left to submit</small><b id="ptl">--:--</b><small>by ${fmtDT(d.deadline_at)}</small></div>` : ''}</div></div>
     ${d.status === 'marked' ? `<div class="card"><div class="spread"><div><div class="small muted">Result</div><h2>${d.total} / ${P.marks} · ${esc(d.grade)}</h2></div>
         <span class="pill ${d.passed ? 'ok' : 'bad'}">${d.passed ? 'Passed' : 'Not passed'}</span></div>
-        <table class="tbl mt16">${scoreRows}</table>${d.feedback ? `<div class="ex mt16">💬 ${esc(d.feedback)}</div>` : ''}</div>` : ''}
+        <table class="tbl mt16">${scoreRows}</table>${d.feedback ? `<div class="ex mt16">💬 ${esc(d.feedback)}</div>` : ''}<div class="tiny dim mt8">Practical marks are reviewed and finalised by the Academic Head.</div></div>` : ''}
     <div class="grid two mt16">
       <div class="card"><h3>1 · Your question paper</h3><p class="small muted">Option ${O.no}: ${esc(O.title)}</p>
         <button class="btn pri" id="pdl">⬇ Download question paper (PDF)</button>
@@ -1033,7 +1041,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=9'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=10'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
