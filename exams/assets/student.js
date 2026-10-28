@@ -22,7 +22,7 @@ function examRules() {
   return [
     ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
     ['camera', 'My camera stays on and my face stays in the frame', `If my face leaves the camera, more than one face appears or the camera goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
-    ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked.`],
+    ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked. On a phone, turn on Do Not Disturb first — a call or pop-up that covers the exam counts as a warning.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
     ['record', 'I agree my activity is recorded', 'Logins, answers, tab switches, camera photos and timings are saved to my student record.'],
