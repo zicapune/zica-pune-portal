@@ -14,7 +14,7 @@ const ME = {
   student: { id: 'demo', name: 'Sanket Sawant', email: 'student@gmail.com', status: 'In Progress', code: '457692' },
   settings,
   courses: [
-    { id: 'mg6', name: 'Program in Motion Graphics', family: 'motion', subjects: [
+    { id: 'mg6', name: 'Program in Motion Graphics', family: 'motion', cert: { key: 'zica', by: 'ZICA', line: 'On completion you receive a ZICA certificate.', note: '' }, subjects: [
       S('photoshop', 'Adobe Photoshop', 'Ps', 'done', { used: 2, assign: AP(6, 6, 6), best: { attempt_id: 'r1', score: 118, max: 150, percent: 78.67, grade: 'B+', level: 'medium', passed: true, at: now() } }),
       S('illustrator', 'Adobe Illustrator', 'Ai', 'ready', { assign: AP(6, 4, 5), slot: { id: 1, starts_at: inH(-1), ends_at: inH(1), open: true } }),
       S('premiere', 'Adobe Premiere Pro', 'Pr', 'scheduled', { slot: { id: 2, starts_at: inH(20), ends_at: inH(22), open: false } }),
@@ -22,7 +22,7 @@ const ME = {
       S('after_effects', 'Adobe After Effects', 'Ae', 'assignments', { assign: AP(8, 2, 3) }),
       S('element3d', 'Element 3D', 'E3D', 'sequence', { seq_block: 'Adobe After Effects' }),
     ] },
-    { id: 'gd6', name: 'Program in Graphic Design', family: 'design', subjects: [
+    { id: 'gd6', name: 'Program in Graphic Design', family: 'design', cert: { key: 'partner', by: 'Demo Partner Institute', line: 'Your certificate for this course is issued by the partner institute (demo).', note: 'Demo text.' }, subjects: [
       S('fine_art', 'Fine Arts', 'FA', 'exempt', { ext_note: 'Completed in batch Jan 2026' }),
       S('coreldraw', 'CorelDRAW', 'Cdr', 'book'),
       S('indesign', 'Adobe InDesign', 'Id', 'missed', { missed_slot: { id: 3, starts_at: inH(-30), ends_at: inH(-28) } }),

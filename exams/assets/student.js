@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=12';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=13';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -16,6 +16,34 @@ const LEVEL_TXT = {
   medium: { t: 'Medium', d: 'Balanced paper — the recommended standard level.' },
   hard: { t: 'Hard', d: 'Advanced, production-level questions. Highest ceiling.' },
 };
+// exam rules — the same list is shown when booking, before the paper opens and inside the exam
+function examRules() {
+  const S = ME?.settings || {}, vl = S.violation_limit ?? 2, fl = S.face_limit ?? 3, dur = S.duration || 60;
+  return [
+    ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
+    ['camera', 'My camera stays on and my face stays in the frame', `If my face leaves the camera, more than one face appears or the camera goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
+    ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked.`],
+    ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
+    ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
+    ['record', 'I agree my activity is recorded', 'Logins, answers, tab switches, camera photos and timings are saved to my student record.'],
+  ];
+}
+const rulesList = () => `<ul class="rlist">${examRules().map((r) => `<li><b>${esc(r[1])}</b><span>${r[2]}</span></li>`).join('')}</ul>`;
+// which practical papers this theory exam leads to, and what is still missing for each
+function pracInfo(cid, sid) {
+  const papers = (PR[cid]?.papers || []).filter((p) => (p.reqs || []).some((r) => r.id === sid));
+  if (!papers.length) return '';
+  const row = (p) => {
+    const others = (p.reqs || []).filter((r) => r.id !== sid && (p.missing || []).some((m) => m.id === r.id || m.name === r.name));
+    const st = p.state === 'theory' ? (others.length ? `then also pass <b>${others.map((r) => esc(r.name)).join(', ')}</b>` : 'unlocks as soon as you pass this exam')
+      : ['ready', 'in_progress', 'submitted', 'marked'].includes(p.state) ? 'already unlocked' : p.state === 'spec' ? 'choose your specialisation first' : 'paper being prepared';
+    return `<li><b>${esc(pLabel(p))} · ${esc(p.title)}</b><span>${st}</span></li>`;
+  };
+  return `<div class="card mt16 prinfo"><h3>🧩 Your practical papers</h3>
+    <p class="small muted" style="margin:6px 0 8px">Passing this theory exam counts towards these practicals (150 marks each). Each one unlocks on the portal once all the theory exams it needs are passed.</p>
+    <ul class="rlist">${papers.map(row).join('')}</ul></div>`;
+}
+const certLine = (c, big) => (c?.cert?.line ? `<div class="certline ${c.cert.key || ''} ${big ? 'big' : ''}"><span class="ci">🎓</span><div><b>${esc(c.cert.line)}</b>${c.cert.note ? `<span>${esc(c.cert.note)}</span>` : ''}</div></div>` : '');
 const VIOL_TXT = {
   tab_switch: ['You left the exam screen', 'Switching tabs or apps during the exam is not allowed.'],
   window_blur: ['The exam window lost focus', 'Another window or app was opened over the exam.'],
@@ -43,9 +71,10 @@ async function boot() {
 }
 
 function bindTop() { $$('[data-signout]').forEach((b) => (b.onclick = () => (DEMO ? toast('Demo mode') : signOut()))); }
+const modeBtn = () => (ME?.is_admin || ME?.is_staff ? `<a class="btn sm modesw" href="admin.html" title="Switch to the ${ME.is_admin ? 'admin' : 'faculty'} panel">⇄ ${ME.is_admin ? 'Admin' : 'Faculty'} mode</a>` : '');
 function shell(inner, fam = '') {
   if (RUN) return;
-  app.innerHTML = topBar(ME?.student || { email: ME?.email }) + `<main class="wrap" ${fam ? `data-fam="${fam}"` : ''}>${inner}</main>
+  app.innerHTML = topBar(ME?.student || { email: ME?.email }, modeBtn()) + `<main class="wrap" ${fam ? `data-fam="${fam}"` : ''}>${inner}</main>
     <div class="foot">ZICA Pune · Kothrud · Exams are monitored — camera, timer and screen focus.</div>`;
   bindTop();
   window.scrollTo(0, 0);
@@ -134,6 +163,7 @@ async function homeView() {
         ${ready ? `<span class="pill ok"><span class="dot pulse"></span>${ready} open now</span>` : book ? `<span class="pill info">${book} to book</span>` : ''}</div>
       <h3>${esc(c.name)}</h3>
       <div class="small muted">${c.subjects.length} subject${c.subjects.length === 1 ? '' : 's'} · ${done} completed</div>
+      ${c.cert?.by ? `<div class="tiny dim" style="margin-top:4px">🎓 Certificate: ${esc(c.cert.by)}</div>` : ''}
       <div class="prog"><i style="width:${pct}%"></i></div></a>`;
   }).join('');
 
@@ -218,7 +248,8 @@ async function courseView(cid) {
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <span>${esc(c.name)}</span></div>
       <h1>${esc(c.name)}</h1>
-      <p class="muted" style="margin:6px 0 0">Theory exams run in course order — 50 questions · 60 minutes · camera on. Practical papers open once you pass the theory exams they need.</p></div>
+      <p class="muted" style="margin:6px 0 0">Theory exams run in course order — 50 questions · ${ME.settings.duration || 60} minutes · camera on. Practical papers open once you pass the theory exams they need.</p></div>
+    ${certLine(c, true)}
     ${String(c.id).startsWith('app3d_') ? `<div class="card mt16" style="border-color:color-mix(in srgb,var(--a1) 45%,var(--line))"><h3 style="margin-bottom:6px">🎓 Your Advanced Professional Program — a separate certificate</h3>
       <p class="small muted" style="margin:0">These papers are <b style="color:var(--ink)">separate</b> from your ZICA course exams and lead to a <b style="color:var(--ink)">second certificate</b>. Please complete <b style="color:var(--ink)">both</b> — your ZICA course exams and every paper below. Each paper is set at the Medium level, with 2 attempts. Same rules apply: camera on, no tab switching.</p></div>` : ''}
     ${specBlock(c, pr)}
@@ -334,8 +365,13 @@ async function bookModal(c, s) {
     <label class="lb">Start time (IST)</label><div class="chips times" id="bkT"><div class="small dim">Pick a day first.</div></div>
     <label class="lb">${kind === 'new' ? 'Note for the Academic Head (optional)' : 'Reason (required)'}</label>
     <textarea class="inp" rows="3" id="bkN" maxlength="1500" placeholder="${kind === 'missed' ? 'e.g. I was unwell on that day.' : kind === 'reschedule' ? 'e.g. I have a college exam that day.' : 'e.g. I prefer the lab PC.'}"></textarea>
+    <details class="bkrules mt16" open><summary><b>Exam-day rules</b> — read before you book</summary>${rulesList()}
+      <div class="tiny dim mt8">You need a phone or laptop with a working front camera, Chrome, a stable internet connection and charged battery.${c.cert?.line ? ' ' + esc(c.cert.line) : ''}</div></details>
+    <label class="rule mt8" id="bkAck"><input type="checkbox"><div class="box"></div><div><b>I have read the exam rules and will follow them</b><span>Camera on, face visible, no tab switching, no outside help.</span></div></label>
     <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Close</button><button class="btn pri" data-ok disabled>Send request</button></div>`);
   const ok = m.el.querySelector('[data-ok]');
+  const ack = () => $('#bkAck', m.el).classList.contains('on');
+  $('#bkAck', m.el).onclick = (e) => { e.preventDefault(); $('#bkAck', m.el).classList.toggle('on'); ok.disabled = !(time && ack()); };
   const drawTimes = () => {
     const x = dayList[day]; const out = [];
     for (let h = h0; h < h1; h++) for (const mm of ['00', '30']) {
@@ -345,13 +381,14 @@ async function bookModal(c, s) {
       out.push(`<button class="chip t ${time === iso ? 'on' : ''}" data-t="${iso}" ${dis ? 'disabled' : ''} title="${busy ? busy + ' booked' : ''}">${fmtTime(iso)}${busy >= 12 && !dis ? '<i>busy</i>' : ''}</button>`);
     }
     $('#bkT', m.el).innerHTML = out.join('') || '<div class="small dim">No times left on this day.</div>';
-    $$('[data-t]', m.el).forEach((b) => (b.onclick = () => { time = b.dataset.t; drawTimes(); ok.disabled = false; }));
+    $$('[data-t]', m.el).forEach((b) => (b.onclick = () => { time = b.dataset.t; drawTimes(); ok.disabled = !ack(); }));
   };
   $$('[data-d]', m.el).forEach((b) => (b.onclick = () => { day = +b.dataset.d; time = null; ok.disabled = true; $$('[data-d]', m.el).forEach((z) => z.classList.toggle('on', z === b)); drawTimes(); }));
   m.el.querySelector('[data-x]').onclick = m.close;
   ok.onclick = async () => {
     const note = $('#bkN', m.el).value.trim();
     if (kind !== 'new' && note.length < 10) return toast('Please write the reason (at least 10 characters).', 'bad');
+    if (!ack()) return toast('Please read the exam rules and tick the box.', 'bad');
     ok.disabled = true; ok.textContent = 'Sending…';
     try {
       await api('exam_book', { p_subject: s.id, p_course: c.id === '_more' ? null : c.id, p_at: new Date(time).toISOString(), p_note: note || null });
@@ -427,7 +464,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=12'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=13'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -455,20 +492,15 @@ async function setupView(cid, sid) {
       <div class="bands">${ME.settings.bands.map((b) => `<span><b>${b[0]}</b>${b[1] ? b[1] + '%+' : 'below 40%'}</span>`).join('')}</div>
     </div>`;
 
-  const rules = [
-    ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
-    ['camera', 'My face stays in the camera the whole time', `If my face leaves the camera (or the camera goes off) I get a warning — after ${ME.settings.face_limit || 3} warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
-    ['tabs', 'I will not switch tabs, apps or windows', `Warnings 1 and 2 are shown on screen. The next one pauses and locks my exam until the Academic Head reviews it — the timer keeps running.`],
-    ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
-    ['time', 'I will finish within 60 minutes', 'Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
-    ['record', 'I agree my activity is recorded', 'Logins, answers, tab switches, camera photos and timings are saved to my ZICA record.'],
-  ];
+  const rules = examRules();
   shell(`
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › <a href="#/c/${encodeURIComponent(cid)}">${esc(c.name)}</a> › <span>${esc(s.name)}</span></div>
       <div class="row">${swTile(s.id, s.short)}<div><h1>${esc(s.name)}</h1>
-      <div class="muted small">${resume ? 'Resume your exam — your timer has been running.' : `50 questions · 60 minutes · attempt ${s.used + 1} of ${s.max_attempts}`}</div></div></div></div>
+      <div class="muted small">${resume ? 'Resume your exam — your timer has been running.' : `50 questions · ${ME.settings.duration || 60} minutes · attempt ${s.used + 1} of ${s.max_attempts}`}</div></div></div>
+      ${resume ? '' : `<div class="notice mt16"><b>Read everything on this page first.</b> Your timer starts only when you press <b>Start exam</b> at the bottom — not before.</div>`}</div>
+    ${certLine(c)}
     ${levelHtml}
-    <div class="card mt16"><h3>${resume ? '1' : '2'} · Exam rules</h3><p class="small muted" style="margin:6px 0 0">Tick each one to continue.</p>
+    <div class="card mt16"><h3>${resume ? '1' : '2'} · Exam rules — read and tick each one</h3><p class="small muted" style="margin:6px 0 0">Ticking means you have read and accept the rule. You can reopen these rules any time during the exam from the <b>Rules</b> button.</p>
       <div class="rules">${rules.map((r) => `<label class="rule" data-rule="${r[0]}"><input type="checkbox"><div class="box"></div><div><b>${r[1]}</b><span>${r[2]}</span></div></label>`).join('')}</div></div>
     <div class="card mt16"><h3>${resume ? '2' : '3'} · Camera check</h3>
       <div class="camcheck mt16"><div class="camview" id="cv"><video id="cvid" playsinline muted></video>
@@ -476,6 +508,7 @@ async function setupView(cid, sid) {
         <div><p class="muted small" style="margin-top:0">Sit facing the light with your full face inside the frame. Use a laptop or phone camera; the exam needs the camera on until you submit.</p>
           <button class="btn" id="camOn">Turn on camera</button>
           <div class="small mt16" id="camMsg"></div></div></div></div>
+    ${resume ? '' : pracInfo(cid, sid)}
     <div class="card mt16" style="text-align:center">
       <button class="btn pri lg" id="go" disabled>${resume ? 'Resume exam' : 'Start exam'} — full screen</button>
       <div class="small muted mt8" id="goMsg">Tick all rules and turn on your camera to continue.</div></div>
@@ -551,6 +584,7 @@ function startExam(p, course) {
       <div class="xsub">${swTile(p.subject.id, course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}
         <div style="min-width:0"><b>${esc(p.subject.name)}</b><div class="small muted">${cap(p.level)} level · ${esc(ME.student.name)}</div></div></div>
       <div style="flex:1"></div>
+      <button class="btn sm ghost rulesbtn" id="rulesB" title="Exam rules (the timer keeps running)">Rules</button>
       <div class="timer" id="tmr">--:--</div>
       <div class="pip" id="pip"><video id="pvid" playsinline muted></video></div>
       <button class="btn zica sm" id="sub">Submit</button>
@@ -559,6 +593,12 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
+  $('#rulesB').onclick = () => {
+    const m = modal(`<div class="spread"><h2 style="margin:0">Exam rules</h2><button class="btn sm pri" data-ok>Back to exam</button></div>
+      <p class="small muted">Your timer keeps running while this is open.</p>${rulesList()}${pracInfo(course.id, p.subject.id)}
+      <button class="btn pri block mt16" data-ok>Back to my exam</button>`);
+    m.el.querySelectorAll('[data-ok]').forEach((x) => (x.onclick = () => { m.close(); goFull(); }));
+  };
 
   const renderQ = () => {
     const q = qs[X.idx]; const id = String(q.id); X.visited.add(id);
@@ -1043,7 +1083,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=12'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=13'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

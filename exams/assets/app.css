@@ -518,3 +518,24 @@ a.kpi-a,.kpi>a{display:block}
   .xwrap .palette.open{position:fixed;max-height:82vh}
 }
 @media (max-width:560px){.xwrap .qcard{padding:14px}.xwrap .qtext{font-size:16px;max-height:30%}.xwrap .opt{font-size:14.5px;padding:10px 11px}}
+
+/* v13 · certificate line, shared rules list, practical info, mode switch */
+.modesw{border-color:color-mix(in srgb,var(--zica) 55%,var(--line));color:var(--zica2);white-space:nowrap}
+.certline{display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
+.certline .ci{font-size:20px;line-height:1.2}
+.certline b{display:block;font-size:14px}
+.certline span{display:block;font-size:13px;color:var(--ink2);margin-top:2px}
+.certline.partner{border-color:rgba(91,156,255,.45);background:linear-gradient(135deg,var(--info-bg),transparent 70%)}
+.certline.big b{font-size:15px}
+.notice{padding:10px 14px;border-radius:12px;background:var(--warn-bg);border:1px solid rgba(245,158,11,.35);font-size:14px}
+.rlist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+.rlist li{padding:10px 12px;border-radius:12px;background:var(--card2);border:1px solid var(--line)}
+.rlist li b{display:block;font-size:14px}
+.rlist li span{display:block;font-size:13px;color:var(--ink2);margin-top:2px}
+.prinfo h3{margin:0}
+.bkrules{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg2)}
+.bkrules summary{cursor:pointer;font-size:14px}
+.bkrules .rlist{max-height:240px;overflow:auto}
+.rulesbtn{margin-right:6px}
+@media (max-width:560px){.modesw{padding:6px 9px;font-size:12px}.rulesbtn{padding:6px 9px}}
+.rlist li span b{display:inline;font-size:inherit;color:var(--ink)}
