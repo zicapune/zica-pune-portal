@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=14';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=15';
 import { Cam, watchFaces } from './proctor.js';
 import { mock } from './demo.js';
 
@@ -63,6 +63,7 @@ async function boot() {
     ME = await api(first ? 'exam_login' : 'exam_me', first ? { p_device: device() } : {});
     sessionStorage.setItem('zp_in', '1');
     if (ME.student) PR = (await api('exam_prac_me').catch(() => ({}))) || {};
+    if (ME.student) contact().catch(() => {});
   } catch (e) { return fatal(errText(e)); }
   if (!ME.student) return notRegistered();
   if (ME.student.blocked) return fatal('Your account is on hold. Please contact the Academic Head.');
@@ -253,12 +254,14 @@ async function courseView(cid) {
     ${String(c.id).startsWith('app3d_') ? `<div class="card mt16" style="border-color:color-mix(in srgb,var(--a1) 45%,var(--line))"><h3 style="margin-bottom:6px">🎓 Advanced Professional Program in Animation and VFX — a separate certificate</h3>
       <p class="small muted" style="margin:0">These papers are <b style="color:var(--ink)">separate</b> from your other course exams and lead to a <b style="color:var(--ink)">second certificate</b>. Please complete <b style="color:var(--ink)">both</b> — your course exams and every paper below. Each paper is set at the Medium level, with 2 attempts. Same rules apply: camera on, no tab switching.</p></div>` : ''}
     ${specBlock(c, pr)}
+    <div class="notice mt16 small">📅 You can book dates for several exams ahead — take them in your course order. ${waNote(CONTACT?.whatsapp)}</div>
     <h2 class="sech">Theory exams</h2>
     ${c.subjects.length ? `<div class="grid subjects">${list}</div>` : `<div class="empty mt24">No subjects are unlocked here yet. Contact the Academic Head.</div>`}
     ${pracBlock(c, pr)}
   `, c.family);
   bindSpec(c, pr); bindPrac(c, pr);
   $$('[data-book]').forEach((b) => (b.onclick = () => bookModal(c, c.subjects.find((x) => x.id === b.dataset.book))));
+  $$('[data-rqt]').forEach((b) => (b.onclick = () => askTime(b.dataset.rqt, () => courseView(cid), { subject: b.dataset.rqs })));
   $$('[data-cancel]').forEach((b) => (b.onclick = async () => {
     if (!(await confirmBox('Cancel this request?', 'Your requested date will be withdrawn. You can book again any time.', 'Cancel request', true))) return;
     try { await api('exam_book_cancel', { p_id: +b.dataset.cancel }); toast('Request cancelled.', 'ok'); await refresh(); courseView(cid); }
@@ -284,7 +287,8 @@ function subjectCard(c, s, i) {
   switch (s.state) {
     case 'live':
       status = `<span class="pill bad"><span class="dot pulse"></span>In progress</span>`;
-      action = `<a class="btn pri sm" href="${href}">Resume exam</a>`; break;
+      action = `<a class="btn pri sm" href="${href}">Resume exam</a>${s.live?.attempt_id ? ` <button class="btn sm ghost" data-rqt="${s.live.attempt_id}" data-rqs="${esc(s.name)}">Request extra time</button>
+        <div class="tiny dim mt8">Lost time due to a power cut, network or camera problem? Request extra time — given after the academic team checks it.</div>` : ''}`; break;
     case 'ready':
       status = s.best ? `<span class="pill">Best ${s.best.score}/${s.best.max} · ${cap(s.best.level)}</span>` : `<span class="pill ok"><span class="dot pulse"></span>Open now</span>`;
       action = `<a class="btn pri sm" href="${href}">${s.best ? `Retake · ${left} left` : 'Start exam'}</a>`;
@@ -307,7 +311,7 @@ function subjectCard(c, s, i) {
       action = `<div class="small muted" style="margin-bottom:8px">You didn't attend on ${fmtDT(s.missed_slot.starts_at)}. Tell us why and pick a new date.</div>${bookBtn('Pick a new date')}`; break;
     case 'sequence':
       status = `<span class="pill">Next in line</span>`;
-      action = `<div class="small muted">Exams follow your course order. Finish <b style="color:var(--ink)">${esc(s.seq_block)}</b> first.</div>`; break;
+      action = `<div class="small muted">Exams follow your course order. Book a date for <b style="color:var(--ink)">${esc(s.seq_block)}</b> first — then you can book this one too (for a later date).</div>`; break;
     case 'assignments':
       status = `<span class="pill warn">Assignments ${got}/${A.need} needed</span>`;
       action = `<div class="small muted" style="margin-bottom:8px">${A.mode === 'submitted' ? 'Submit' : 'Get approved'} at least ${A.need} of ${A.req} assignments (${A.pct}%) to unlock this exam.</div><a class="btn sm" href="${ahref}">Open assignments</a>`; break;
@@ -392,7 +396,15 @@ async function bookModal(c, s) {
     ok.disabled = true; ok.textContent = 'Sending…';
     try {
       await api('exam_book', { p_subject: s.id, p_course: c.id === '_more' ? null : c.id, p_at: new Date(time).toISOString(), p_note: note || null });
-      m.close(); toast('Request sent. You’ll get an email once it’s confirmed.', 'ok'); await refresh();
+      m.close(); toast('Request sent. You’ll get an email once it’s confirmed.', 'ok');
+      { const C = await contact(); const mm = modal(`<div class="bigic o">✓</div><h2>Date requested</h2><p class="muted">${waNote(C.whatsapp)}</p>
+          ${kind !== 'new' ? '<p class="small">Please also email the reason from your own email, so there is a written record.</p>' : ''}
+          <div class="row mt16" style="justify-content:flex-end;gap:8px">${kind !== 'new' ? '<button class="btn" data-em>Email the reason</button>' : ''}<button class="btn pri" data-ok>OK</button></div>`);
+        mm.el.querySelector('[data-ok]').onclick = mm.close;
+        const em = mm.el.querySelector('[data-em]');
+        if (em) em.onclick = () => { mm.close(); emailDraft('Email your reason', `${kind === 'missed' ? 'Missed exam' : 'Exam date change'} — ${s.name} — ${meLine()}`,
+          `Dear Academic Head,\n\nI am ${meLine()}. ${kind === 'missed' ? 'I could not attend my ' + s.name + ' exam' : 'I would like to change the date of my ' + s.name + ' exam'} for the following reason:\n${note}\n\nI have requested ${fmtDT(time)} on the portal. Kindly consider my request.\n\n${ME.student.name}\n${ME.student.email}`); }; }
+      await refresh();
       { const t = '#/c/' + encodeURIComponent(c.id); if (location.hash !== t) location.hash = t; else courseView(c.id); }
     } catch (e) { toast(errText(e), 'bad'); ok.disabled = false; ok.textContent = 'Send request'; }
   };
@@ -464,7 +476,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=14'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=15'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -558,11 +570,33 @@ async function setupView(cid, sid) {
   };
 }
 
-// student asks for extra time on a running / held exam
-function askTime(attemptId, done) {
+// contact details (who to write to, WhatsApp) — fetched once
+let CONTACT = null;
+const contact = async () => CONTACT || (CONTACT = DEMO ? { to: 'academics@example.com', cc: '', whatsapp: '', name: ME.student.name, code: ME.student.code } : await api('exam_contact').catch(() => ({ to: 'academics.zicapune@gmail.com', cc: 'chaitanya.zica@gmail.com' })));
+const waNote = (wa) => `After booking, please send a <b>WhatsApp message</b> (not a call) to the Academic Head${wa ? ` on <a href="https://wa.me/${esc(String(wa).replace(/\D/g, ''))}" target="_blank" rel="noopener">${esc(wa)}</a>` : ''} so your date can be approved on the portal.`;
+// the student reviews and edits the email, then sends it from their own Gmail / mail app
+async function emailDraft(title, subj, body) {
+  const C = await contact();
+  const m = modal(`<h2>${esc(title)}</h2>
+    <p class="small muted">Please also email the Academic Head from your own email, so there is a written record. Check and edit the message, then open it in Gmail or your mail app and press Send there.</p>
+    <div class="small">To: <b>${esc(C.to)}</b>${C.cc ? `<br>Cc: ${esc(C.cc)}` : ''}</div>
+    <label class="lb">Subject</label><input class="inp" id="emS" maxlength="200" value="${esc(subj)}">
+    <label class="lb">Message</label><textarea class="inp" id="emB" rows="9" maxlength="3000">${esc(body)}</textarea>
+    <div class="row mt16" style="gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" data-x>Close</button>
+      <button class="btn" data-mail>Other email app</button><button class="btn pri" data-gm>Open in Gmail</button></div>`, 'wide');
+  const get = () => [$('#emS', m.el).value.trim(), $('#emB', m.el).value.trim()];
+  const enc = encodeURIComponent;
+  m.el.querySelector('[data-x]').onclick = m.close;
+  m.el.querySelector('[data-gm]').onclick = () => { const [a, b] = get(); window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${enc(C.to)}&cc=${enc(C.cc || '')}&su=${enc(a)}&body=${enc(b)}`, '_blank', 'noopener'); };
+  m.el.querySelector('[data-mail]').onclick = () => { const [a, b] = get(); location.href = `mailto:${C.to}?cc=${enc(C.cc || '')}&subject=${enc(a)}&body=${enc(b)}`; };
+}
+const meLine = () => `${ME.student.name}${ME.student.code ? ' (Student ID ' + ME.student.code + ')' : ''}`;
+
+// student asks for extra time on a running / held exam (inside the exam the email step comes later, so the exam is not left)
+function askTime(attemptId, done, opt = {}) {
   let mins = 15;
   const m = modal(`<div class="askt"><h2>Request extra time</h2>
-    <p class="small muted">Tell the Academic Head what happened. They will add time now or reopen your exam at a set time. You will get an email.</p>
+    <p class="small muted">Tell the Academic Head what happened. Extra time is given only after the academic team and the Academic Head check it — they may add time now or reopen your exam at a set time. You will get an email.${opt.inExam ? ' You can also email your request from the exam page after this.' : ''}</p>
     <label class="lb">Minutes needed</label><div class="chips" id="rqM">${[15, 20, 30, 50].map((n) => `<button class="chip t ${n === mins ? 'on' : ''}" data-m="${n}">${n} min</button>`).join('')}</div>
     <label class="lb">What happened? *</label><textarea class="inp" rows="3" id="rqR" maxlength="900" placeholder="e.g. Power cut from 11:10 to 11:40, my Wi-Fi was down."></textarea>
     <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-go>Send request</button></div></div>`);
@@ -572,8 +606,13 @@ function askTime(attemptId, done) {
     const why = $('#rqR', m.el).value.trim();
     if (why.length < 10) return toast('Please explain what happened (at least 10 characters).', 'bad');
     e.target.disabled = true;
-    try { const r = await api('exam_time_request', { p_attempt: attemptId, p_minutes: mins, p_reason: why }); m.close(); toast('Request sent to the Academic Head.', 'ok'); done && done(r); }
-    catch (er) { toast(errText(er), 'bad'); e.target.disabled = false; }
+    try {
+      const r = await api('exam_time_request', { p_attempt: attemptId, p_minutes: mins, p_reason: why }); m.close();
+      toast('Request recorded. It is approved only after the academic team and the Academic Head check it.', 'ok');
+      if (!opt.inExam) emailDraft('Email your request', `Extra time request — ${opt.subject || 'exam'} — ${meLine()}`,
+        `Dear Academic Head,\n\nI am ${meLine()}. During my ${opt.subject || ''} exam on ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' })}, the following happened:\n${why}\n\nI request ${mins} extra minutes to complete my exam. I understand that extra time is given only after the academic team and the Academic Head check and approve it.\n\n${ME.student.name}\n${ME.student.email}`);
+      done && done(r);
+    } catch (er) { toast(errText(er), 'bad'); e.target.disabled = false; }
   };
 }
 
@@ -612,6 +651,13 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
+  if (p.live_key && !DEMO) import('./live.js?v=15').then(({ studentLive }) => {
+    const stop = studentLive(p.live_key, () => cam.stream, (on) => {
+      let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
+      b.style.display = on ? 'block' : 'none';
+    });
+    X.cleanup.push(() => { stop(); $('#talkB')?.remove(); });
+  }).catch(() => {});
   $('#rulesB').onclick = () => {
     const m = modal(`<div class="spread"><h2 style="margin:0">Exam rules</h2><button class="btn sm pri" data-ok>Back to exam</button></div>
       <p class="small muted">Your timer keeps running while this is open.</p>${rulesList()}${pracInfo(course.id, p.subject.id)}
@@ -620,7 +666,7 @@ function startExam(p, course) {
         <button class="btn sm mt8" data-rq>Request extra time</button></div>
       <button class="btn pri block mt16" data-ok>Back to my exam</button>`);
     m.el.querySelectorAll('[data-ok]').forEach((x) => (x.onclick = () => { m.close(); goFull(); }));
-    m.el.querySelector('[data-rq]').onclick = () => { m.close(); askTime(p.attempt_id, () => goFull()); };
+    m.el.querySelector('[data-rq]').onclick = () => { m.close(); askTime(p.attempt_id, () => goFull(), { inExam: true, subject: p.subject.name }); };
   };
 
   const renderQ = () => {
@@ -782,7 +828,7 @@ function startExam(p, course) {
     const draw = (st) => {
       if (!m) { m = modal('', 'badm'); m.el.classList.add('paused'); }
       m.el.querySelector('.modal').innerHTML = pausedHtml(st || {});
-      const b = m.el.querySelector('[data-rq]'); if (b) b.onclick = () => askTime(p.attempt_id, (r) => draw(r));
+      const b = m.el.querySelector('[data-rq]'); if (b) b.onclick = () => askTime(p.attempt_id, (r) => draw(r), { subject: p.subject.name });
     };
     draw(st0);
     if (X.pausePoll) return;
@@ -1060,6 +1106,8 @@ function pracCard(p) {
   switch (p.state) {
     case 'ready': status = `<span class="pill ok"><span class="dot pulse"></span>Ready to start</span>`;
       action = `<button class="btn pri sm" data-pstart="${p.id}">Start practical</button>`; break;
+    case 'approval': status = `<span class="pill ok">✓ Theory passed</span>`;
+      action = `<div class="small muted">The Academic Head will open this practical paper for you shortly — you will get an email. Your results are declared after you submit all your assignments.</div>`; break;
     case 'theory': status = `<span class="pill">Pass theory first</span>`;
       action = `<div class="small muted">Needs: ${p.missing.map((m) => `<b style="color:var(--ink)">${esc(m.name)}</b>`).join(', ')}</div>`; break;
     case 'spec': status = `<span class="pill warn">Choose specialisation</span>`; action = `<div class="small muted">Pick your specialisation above.</div>`; break;
@@ -1141,7 +1189,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=14'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=15'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

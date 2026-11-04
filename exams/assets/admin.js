@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=14';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=15';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -25,7 +25,7 @@ async function boot() {
 }
 function bindTop() { $$('[data-signout]').forEach((b) => (b.onclick = signOut)); }
 
-const ADMIN_TABS = [['dash', 'Dashboard'], ['requests', 'Requests'], ['students', 'Students'], ['slots', 'Slots'], ['prac', 'Practicals'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['settings', 'Settings']];
+const ADMIN_TABS = [['dash', 'Dashboard'], ['wall', 'Live cameras'], ['requests', 'Requests'], ['approve', 'Approvals'], ['students', 'Students'], ['slots', 'Slots'], ['prac', 'Practicals'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['settings', 'Settings']];
 const STAFF_TABS = [['prac', 'Practical marking'], ['subs', 'Assignment reviews']];
 const tabs = () => (META?.is_admin ? ADMIN_TABS : STAFF_TABS);
 function frame(inner) {
@@ -45,10 +45,100 @@ function route() {
   if (p[0] === 'students' && p[1] !== undefined) S.course = decodeURIComponent(p[1] || '');
   if (p[0] === 'prac' && p[1] === 'papers') return pracPapers();
   if (p[0] === 'prac' && p[1]) return pracMark(p[1]);
-  ({ dash, requests, students, slots, prac, subs, banks, settings })[S.tab]();
+  if (S.tab !== 'wall' && LIVE) { LIVE.stop(); LIVE = null; }
+  ({ dash, wall, requests, approve, students, slots, prac, subs, banks, settings })[S.tab]();
 }
 const subjName = (id) => META.subjects.find((s) => s.id === id)?.name || id;
 const subjShort = (id) => META.subjects.find((s) => s.id === id)?.short || id;
+
+// ================================================================= live camera wall
+let LIVE = null;
+async function wall() {
+  frame(`<div class="phead spread"><div><h1>Live cameras</h1>
+      <div class="small muted">Video goes straight from each student's device to this screen — nothing passes through or is stored on the server. Hold 🎤 on a tile to speak to that student, or hold “Talk to all”.</div></div>
+      <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
+    <div class="wall mt16" id="wg"><div class="spin"></div></div>
+    <p class="tiny dim mt16">If a tile stays on “Connecting”, the student's network (often mobile data) is blocking direct video — their camera photos are still saved as usual. Tap the tile to retry.</p>`);
+  let mod; try { mod = await import('./live.js?v=15'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  const tiles = {};
+  const upd = (key, u) => {
+    const t = tiles[key]; if (!t) return;
+    if (u.stream) { const v = t.querySelector('video'); v.srcObject = u.stream; v.play().catch(() => {}); t.querySelector('.ph').style.display = 'none'; }
+    if (u.state) { t.dataset.state = u.state; const p = t.querySelector('.st');
+      p.className = 'st pill ' + ({ connected: 'ok', live: 'ok', failed: 'bad', disconnected: 'warn' }[u.state] || '');
+      p.textContent = { connected: '● Live', live: '● Live', connecting: 'Connecting…', new: 'Connecting…', failed: 'No video', disconnected: 'Reconnecting…', closed: 'Closed' }[u.state] || u.state;
+      if (['failed', 'closed'].includes(u.state)) { const ph = t.querySelector('.ph'); ph.style.display = 'grid'; ph.textContent = 'No video — tap to retry'; } }
+  };
+  if (!LIVE) LIVE = mod.adminLive(upd);
+  const holdTalk = (el, key) => {
+    const on = async (e) => { e.preventDefault(); if (!(await LIVE.talk(key, true))) return toast('Allow the microphone in the browser to talk.', 'bad'); (key ? [tiles[key]] : Object.values(tiles)).forEach((t) => t?.classList.add('talking')); };
+    const off = () => { LIVE.talk(key, false); Object.values(tiles).forEach((t) => t.classList.remove('talking')); };
+    el.onpointerdown = on; el.onpointerup = off; el.onpointerleave = off; el.oncontextmenu = (e) => e.preventDefault();
+  };
+  const load = async () => {
+    let L; try { L = await rpc('exam_admin_live_feed'); } catch (e) { return toast(errText(e), 'bad'); }
+    const g = $('#wg'); if (!g) return;
+    if (!L.length) { g.innerHTML = '<div class="empty">Nobody is writing an exam right now.</div>'; LIVE.keys().forEach((k) => LIVE.drop(k)); Object.keys(tiles).forEach((k) => delete tiles[k]); return; }
+    g.querySelector('.spin, .empty')?.remove();
+    const keys = new Set(L.map((x) => x.key));
+    Object.keys(tiles).forEach((k) => { if (!keys.has(k)) { tiles[k].remove(); delete tiles[k]; LIVE.drop(k); } });
+    L.forEach((x) => {
+      let t = tiles[x.key];
+      if (!t) {
+        t = tiles[x.key] = document.createElement('div'); t.className = 'tile';
+        t.innerHTML = `<video playsinline muted autoplay></video><div class="ph">Connecting to camera…</div><span class="st pill">Connecting…</span>
+          <button class="btn sm tk" title="Hold to talk to this student">🎤</button><div class="cap"><b></b><span></span></div>`;
+        t.querySelector('.ph').onclick = () => LIVE.retry(x.key);
+        holdTalk(t.querySelector('.tk'), x.key);
+        g.appendChild(t); LIVE.watch(x);
+      }
+      t.querySelector('.cap b').textContent = x.name;
+      t.querySelector('.cap span').textContent = `${x.subject} · ${x.answered}/${x.total} answered · ${x.violations} warning${x.violations === 1 ? '' : 's'}${x.status === 'paused' ? ' · paused' : ''}`;
+    });
+  };
+  $('#wR').onclick = load;
+  holdTalk($('#wAll'), null);
+  await load();
+  timer = setInterval(() => { if (S.tab === 'wall') load(); }, 20000);
+}
+
+// ================================================================= approvals: practical papers + retakes
+async function approve() {
+  frame(`<div class="phead spread"><div><h1>Approvals</h1><div class="small muted">Open practical papers for students who passed their theory, and allow exam retakes. Each student is emailed automatically.</div></div>
+    <button class="btn" id="apR">↻ Refresh</button></div>
+    <div id="ap1"><div class="spin"></div></div><div id="ap2" class="mt32"><div class="spin"></div></div>`);
+  $('#apR').onclick = approve;
+  let P = [], R = [];
+  try { [P, R] = await Promise.all([rpc('exam_admin_prac_pending'), rpc('exam_admin_retake_list')]); } catch (e) { return toast(errText(e), 'bad'); }
+  const all = (box, attr) => { const c = $(`#${box} [data-all]`); if (c) c.onchange = () => $$(`#${box} [${attr}]`).forEach((x) => (x.checked = c.checked)); };
+  $('#ap1').innerHTML = `<div class="spread"><h3>🎨 Practical papers to open · ${P.length}</h3>${P.length ? '<button class="btn pri" id="apGo">Open selected practicals</button>' : ''}</div>
+    <p class="small muted">These students passed every theory exam the practical needs. Opening it emails them that the paper is available; results still wait for all assignments.</p>
+    ${P.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th><input type="checkbox" data-all></th><th>Student</th><th>Course</th><th>Practical</th><th>Theory passed</th></tr>
+      ${P.map((x, i) => `<tr><td><input type="checkbox" data-pp="${i}"></td><td><b>${esc(x.name)}</b><div class="tiny dim">${esc(x.email)}</div></td><td class="small">${esc(x.course)}</td>
+        <td>${x.module && x.paper ? `M${esc(x.module)} · P${esc(x.paper)} · ` : ''}${esc(x.title)}</td><td class="small">${esc(x.reqs || '')}</td></tr>`).join('')}</table></div>` : '<div class="empty mt8">Nobody is waiting for a practical paper.</div>'}`;
+  all('ap1', 'data-pp');
+  $('#apGo') && ($('#apGo').onclick = async () => {
+    const items = $$('#ap1 [data-pp]:checked').map((c) => P[+c.dataset.pp]).map((x) => ({ student_id: x.student_id, paper_id: x.paper_id }));
+    if (!items.length) return toast('Tick at least one student.', 'bad');
+    if (!(await confirmBox(`Open ${items.length} practical paper(s)?`, 'The students get an email that their practical exam is available.', 'Open papers'))) return;
+    run(() => rpc('exam_admin_prac_approve', { p_items: items }), 'Practicals opened — students emailed', approve);
+  });
+  const HOW = { submitted: 'Submitted', time_up: 'Time ran out', admin_ended: 'Ended by admin', face_limit: 'Camera warnings (auto-submitted)' };
+  $('#ap2').innerHTML = `<div class="spread"><h3>🔁 Allow a retake · ${R.length}</h3>${R.length ? '<button class="btn pri" id="rtGo">Allow retake for selected</button>' : ''}</div>
+    <p class="small muted">Students whose last exam was not passed, or was auto-submitted / ended. Allowing a retake adds one attempt and emails them to book a new date.</p>
+    ${R.length ? `<label class="lb">Note to the students (optional)</label><input class="inp" id="rtN" maxlength="300" placeholder="e.g. Please keep your face in the camera and stay on the exam screen this time.">
+      <div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th><input type="checkbox" data-all></th><th>Student</th><th>Subject</th><th>Result</th><th>How it ended</th><th>Warnings</th><th>Attempts</th><th>When</th></tr>
+      ${R.map((x, i) => `<tr><td><input type="checkbox" data-rt="${i}"></td><td><b>${esc(x.name)}</b><div class="tiny dim">${esc(x.email)}</div></td><td>${esc(x.subject)}</td>
+        <td>${x.grade ? `<b>${esc(x.grade)}</b> ` : ''}${x.score ?? 0}/${x.max ?? 0}</td><td class="small">${esc(HOW[x.how] || x.how || '')}</td>
+        <td>${x.violations}${x.face ? ' + ' + x.face + ' face' : ''}</td><td>${x.used}/${x.max_attempts}</td><td class="small">${fmtDT(x.at)}</td></tr>`).join('')}</table></div>` : '<div class="empty mt8">No failed or interrupted exams.</div>'}`;
+  all('ap2', 'data-rt');
+  $('#rtGo') && ($('#rtGo').onclick = async () => {
+    const items = $$('#ap2 [data-rt]:checked').map((c) => R[+c.dataset.rt]).map((x) => ({ student_id: x.student_id, subject_id: x.subject_id }));
+    if (!items.length) return toast('Tick at least one student.', 'bad');
+    if (!(await confirmBox(`Allow ${items.length} retake(s)?`, 'Each student gets one more attempt and an email to book a new date.', 'Allow retake'))) return;
+    run(() => rpc('exam_admin_retake', { p_items: items, p_note: $('#rtN').value.trim() || null }), 'Retakes allowed — students emailed', approve);
+  });
+}
 
 // ================================================================= dashboard
 let PC = {};
@@ -318,7 +408,7 @@ async function studentDrawer(id, after) {
   const s = R.student;
   d.innerHTML = `<div class="dh"><div class="avatar" style="width:44px;height:44px">${esc(initials(s.name))}</div>
       <div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3><div class="small muted">${esc(s.email)}${s.alt_emails?.length ? ' · alt: ' + esc(s.alt_emails.join(', ')) : ''}</div></div>
-      <button class="btn sm" data-edit>Edit</button><button class="btn sm ghost" data-close>✕</button></div>
+      <button class="btn sm" data-edit title="Edit details or change the student's course(s)">Edit · change course</button><button class="btn sm ghost" data-close>✕</button></div>
     <div class="db">
       <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill info">${esc(s.status || '—')}</span>${s.blocked ? '<span class="pill bad">Blocked</span>' : ''}
         ${s.cert_given ? '<span class="pill ok">Certificate given</span>' : ''}<span class="pill">${s.login_count} logins · last ${ago(s.last_login)}</span>
@@ -819,7 +909,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=14');
+        const { practicalPDF } = await import('./pdf.js?v=15');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
