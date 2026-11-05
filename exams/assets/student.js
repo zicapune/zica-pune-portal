@@ -1,8 +1,9 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=16';
-import { Cam, watchFaces } from './proctor.js';
-import { mock } from './demo.js';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=17';
+import { Cam, watchFaces } from './proctor.js?v=17';
+import { mock } from './demo.js?v=17';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=17';
 
 const app = $('#app');
 const cam = new Cam();
@@ -21,11 +22,12 @@ function examRules() {
   const S = ME?.settings || {}, vl = S.violation_limit ?? 2, fl = S.face_limit ?? 3, dur = S.duration || 60;
   return [
     ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
-    ['camera', 'My camera stays on and my face stays in the frame', `If my face leaves the camera, more than one face appears or the camera goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
+    ['camera', 'My camera and microphone stay on, and my face stays in the frame', `If my face leaves the camera, more than one face appears, or the camera or microphone goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
+    ['voice', 'I will stay silent — no reading questions aloud, no voice assistants', 'The microphone listens during the whole exam. If speech is heard — me, another person, or a phone/AI voice assistant such as ChatGPT or Gemini — a short video-and-sound clip is recorded and the Academic Head reviews it. A red <b>● REC</b> badge shows on my screen whenever a clip is being recorded. The Academic Head may also watch and listen live; a <b>👁 Being watched</b> badge shows when that happens.'],
     ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked. On a phone, turn on Do Not Disturb first — a call or pop-up that covers the exam counts as a warning.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
-    ['record', 'I agree my activity is recorded', 'Logins, answers, tab switches, camera photos and timings are saved to my student record.'],
+    ['record', 'I agree my activity is recorded', 'Logins, answers, time spent on each question, tab switches, camera photos and voice clips are saved to my student record and seen only by the Academic Head.'],
   ];
 }
 const rulesList = () => `<ul class="rlist">${examRules().map((r) => `<li><b>${esc(r[1])}</b><span>${r[2]}</span></li>`).join('')}</ul>`;
@@ -49,7 +51,7 @@ const VIOL_TXT = {
   window_blur: ['The exam window lost focus', 'Another window or app was opened over the exam.'],
   no_face: ["We can't see your face", 'Keep your face clearly visible in the camera at all times.'],
   multiple_faces: ['More than one person detected', 'You must be alone while taking the exam.'],
-  camera_off: ['Your camera turned off', 'The camera must stay on for the entire exam.'],
+  camera_off: ['Your camera or microphone turned off', 'The camera and microphone must stay on for the entire exam.'],
 };
 
 // ---------------------------------------------------------------- boot
@@ -482,7 +484,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=16'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=17'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -520,32 +522,34 @@ async function setupView(cid, sid) {
     ${levelHtml}
     <div class="card mt16"><h3>${resume ? '1' : '2'} · Exam rules — read and tick each one</h3><p class="small muted" style="margin:6px 0 0">Ticking means you have read and accept the rule. You can reopen these rules any time during the exam from the <b>Rules</b> button.</p>
       <div class="rules">${rules.map((r) => `<label class="rule" data-rule="${r[0]}"><input type="checkbox"><div class="box"></div><div><b>${r[1]}</b><span>${r[2]}</span></div></label>`).join('')}</div></div>
-    <div class="card mt16"><h3>${resume ? '2' : '3'} · Camera check</h3>
+    <div class="card mt16"><h3>${resume ? '2' : '3'} · Camera and microphone check</h3>
       <div class="camcheck mt16"><div class="camview" id="cv"><video id="cvid" playsinline muted></video>
         <div class="camstat"><span class="pill" id="fstat">Camera off</span></div></div>
-        <div><p class="muted small" style="margin-top:0">Sit facing the light with your full face inside the frame. Use a laptop or phone camera; the exam needs the camera on until you submit.</p>
-          <button class="btn" id="camOn">Turn on camera</button>
-          <div class="small mt16" id="camMsg"></div></div></div></div>
+        <div><p class="muted small" style="margin-top:0">Sit facing the light with your full face inside the frame. Use a laptop or phone camera; the exam needs the camera <b>and microphone</b> on until you submit. When your browser asks, tap <b>Allow</b> for both.</p>
+          <button class="btn" id="camOn">Turn on camera & mic</button>
+          <div class="small mt16" id="camMsg"></div>
+          <div class="small mt16" id="micRow" style="display:none">🎙 Microphone <span class="tiny dim">— this bar moves when there is sound</span><div class="micmeter"><i id="micLvl"></i></div></div></div></div></div>
     ${resume ? '' : pracInfo(cid, sid)}
     <div class="card mt16" style="text-align:center">
       <button class="btn pri lg" id="go" disabled>${resume ? 'Resume exam' : 'Start exam'} — full screen</button>
-      <div class="small muted mt8" id="goMsg">Tick all rules and turn on your camera to continue.</div></div>
+      <div class="small muted mt8" id="goMsg">Tick all rules and turn on your camera and microphone to continue.</div></div>
   `, c.family);
 
   $$('.lvl').forEach((b) => (b.onclick = () => { level = b.dataset.lvl; $$('.lvl').forEach((x) => x.classList.toggle('on', x === b)); }));
   $$('.rule').forEach((r) => (r.onclick = (e) => { e.preventDefault(); r.classList.toggle('on'); check(); }));
-  let faceOK = false, camOK = false, stopWatch = null;
+  let faceOK = false, camOK = false, stopWatch = null, micMeter = null;
   const check = () => {
     const all = $$('.rule').every((r) => r.classList.contains('on'));
     $('#go').disabled = !(all && camOK && faceOK);
-    $('#goMsg').textContent = !all ? 'Tick all rules to continue.' : !camOK ? 'Turn on your camera to continue.' : !faceOK ? 'Make sure your face is clearly visible.' : 'All set. The exam opens in full screen.';
+    $('#goMsg').textContent = !all ? 'Tick all rules to continue.' : !camOK ? 'Turn on your camera and microphone to continue.' : !faceOK ? 'Make sure your face is clearly visible.' : 'All set. The exam opens in full screen.';
   };
   $('#camOn').onclick = async () => {
     if (!Cam.supported()) { $('#camMsg').innerHTML = `<span style="color:var(--bad)">This browser can't use the camera. Open the portal in Chrome.</span>`; return; }
-    $('#camMsg').textContent = 'Starting camera…';
+    $('#camMsg').textContent = 'Starting camera and microphone…';
     try {
       await cam.start($('#cvid'));
-      camOK = true; $('#camOn').textContent = 'Camera on'; $('#camOn').disabled = true;
+      camOK = true; $('#camOn').textContent = 'Camera & mic on'; $('#camOn').disabled = true;
+      try { micMeter?.stop(); micMeter = voiceWatch(cam.stream, { onLevel: (v) => { const b = $('#micLvl'); if (b) b.style.width = Math.round(v * 100) + '%'; } }); $('#micRow').style.display = ''; } catch {}
       $('#camMsg').textContent = 'Loading face check…';
       const has = await cam.loadDetector();
       if (!has) { faceOK = true; $('#fstat').textContent = 'Camera on'; $('#fstat').className = 'pill ok'; $('#camMsg').textContent = 'Camera is on.'; api('exam_event', { p_attempt: null, p_kind: 'face_detect_unavailable', p_detail: device() }).catch(() => {}); check(); return; }
@@ -559,7 +563,7 @@ async function setupView(cid, sid) {
         check();
       } });
     } catch (e) {
-      $('#camMsg').innerHTML = `<span style="color:var(--bad)">Camera blocked. Tap the 🔒 / camera icon in the address bar → Allow camera, then try again.</span>`;
+      $('#camMsg').innerHTML = `<span style="color:var(--bad)">${e?.name === 'NoMic' || e?.name === 'NotFoundError' ? 'No working microphone found. Use a phone, or a laptop with a built-in or plugged-in mic, then try again.' : 'Camera or microphone blocked. Tap the 🔒 / camera icon in the address bar → Allow <b>camera</b> and <b>microphone</b>, then try again.'}</span>`;
       api('exam_event', { p_attempt: null, p_kind: 'camera_denied', p_detail: { msg: String(e?.name || e) } }).catch(() => {});
     }
   };
@@ -568,7 +572,7 @@ async function setupView(cid, sid) {
     goFull();
     try {
       const p = await api('exam_start', { p_subject: s.id, p_course: c.id === '_more' ? null : c.id, p_level: level, p_device: device() });
-      stopWatch?.();
+      stopWatch?.(); micMeter?.stop();
       startExam(p, c);
     } catch (e) {
       exitFull(); toast(errText(e), 'bad'); $('#go').disabled = false; $('#go').textContent = (resume ? 'Resume exam' : 'Start exam') + ' — full screen';
@@ -648,6 +652,9 @@ function startExam(p, course) {
       <div class="xsub">${swTile(p.subject.id, course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}
         <div style="min-width:0"><b>${esc(p.subject.name)}</b><div class="small muted">${cap(p.level)} level · ${esc(ME.student.name)}</div></div></div>
       <div style="flex:1"></div>
+      <div class="xbadges"><span class="xb mic" id="xbMic" title="Your microphone is on. Speech during the exam is recorded for review."><i></i><span class="t">Mic on</span></span>
+        <span class="xb rec" id="xbRec" title="Speech was heard — a short clip is being recorded for the Academic Head"><b></b>REC</span>
+        <span class="xb eye" id="xbEye" title="The Academic Head is watching your camera live">👁<span class="t">Being watched</span></span></div>
       <button class="btn sm ghost rulesbtn" id="rulesB" title="Exam rules (the timer keeps running)">Rules</button>
       <div class="timer" id="tmr">--:--</div>
       <div class="pip" id="pip"><video id="pvid" playsinline muted></video></div>
@@ -657,11 +664,12 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=16').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=17').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
+      X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
       b.style.display = on ? 'block' : 'none';
-    });
+    }, { getSnap: () => cam.snapshot(240, 0.5), onWatch: (n) => $('#xbEye')?.classList.toggle('on', n > 0) });
     X.cleanup.push(() => { stop(); $('#talkB')?.remove(); });
   }).catch(() => {});
   $('#rulesB').onclick = () => {
@@ -854,6 +862,7 @@ function startExam(p, course) {
   // heartbeat: keeps the Academic Head informed, picks up extra time added by the admin
   const ping = async () => {
     if (X.ended || DEMO) return;
+    sendTimes();
     try {
       const st = await api('exam_ping', { p_attempt: p.attempt_id });
       X.offset = Date.parse(st.server_now) - Date.now();
@@ -866,6 +875,43 @@ function startExam(p, course) {
   };
   const pingT = setInterval(ping, 30000); ping();
   X.cleanup.push(() => clearInterval(pingT));
+
+  // time spent on each question (only while this screen is in front)
+  X.qt = (() => { try { return JSON.parse(localStorage.getItem('zqt_' + p.attempt_id) || '{}') || {}; } catch { return {}; } })();
+  let qtN = 0;
+  const qtT = setInterval(() => {
+    if (X.ended || X.status !== 'in_progress' || document.hidden) return;
+    const id = String(qs[X.idx]?.id); if (!id) return;
+    X.qt[id] = (X.qt[id] || 0) + 1; X.qtDirty = true;
+    if (++qtN % 10 === 0) { try { localStorage.setItem('zqt_' + p.attempt_id, JSON.stringify(X.qt)); } catch {} }
+  }, 1000);
+  X.cleanup.push(() => clearInterval(qtT));
+  function sendTimes() {
+    if (!X.qtDirty || DEMO) return Promise.resolve();
+    X.qtDirty = false;
+    return api('exam_qtimes', { p_attempt: p.attempt_id, p_times: X.qt }).catch(() => { X.qtDirty = true; });
+  }
+
+  // microphone: speech heard → on-screen notice + a short clip for the Academic Head (never ends the exam by itself)
+  const vKey = 'zvc_' + p.attempt_id;
+  let vw = null, cl = null, nClips = +(localStorage.getItem(vKey) || 0);
+  const maxClips = +(ME.settings?.voice_clips_max ?? 8);
+  const startMic = () => {
+    if (DEMO || X.ended || !cam.stream || !cam.micOn()) return;
+    vw?.stop(); cl?.stop();
+    cl = clipper(cam.stream, { onRec: (on) => $('#xbRec')?.classList.toggle('on', on), onClip: (c) => uploadClip(sb, api, p.attempt_id, c) });
+    vw = voiceWatch(cam.stream, {
+      paused: () => !!X.talking || X.status !== 'in_progress' || X.ended,
+      onLevel: (v) => { const i = $('#xbMic i'); if (i) i.style.transform = `scaleY(${0.25 + v * 0.75})`; },
+      onSpeech: (info) => {
+        const q = X.idx + 1;
+        api('exam_voice', { p_attempt: p.attempt_id, p_q: q, p_path: null, p_kind: 'voice', p_secs: null, p_bytes: null, p_level: info.level }).catch(() => {});
+        if (nClips < maxClips && cl?.fire({ q })) { nClips++; try { localStorage.setItem(vKey, String(nClips)); } catch {} }
+        toast('🎙 Voice heard — please stay silent. A short clip is recorded for the Academic Head to review.', 'bad');
+      },
+    });
+  };
+  X.cleanup.push(() => { vw?.stop(); cl?.stop(); });
 
   const onVis = () => { if (document.hidden) { violation('tab_switch'); evt('hidden'); } else evt('visible'); };
   let blurT;
@@ -915,15 +961,15 @@ function startExam(p, course) {
     if (X.ended) return;
     pipState(false); violation('camera_off');
     if ($('.ov.cam')) return;
-    const m = modal(`<div class="bigic b">📷</div><h2>Camera is off</h2><p class="muted">Turn your camera back on to continue. Your timer is running.</p>
-      <button class="btn pri block mt16" data-ok>Turn camera back on</button>`, 'badm');
+    const m = modal(`<div class="bigic b">📷</div><h2>Camera or microphone is off</h2><p class="muted">Turn your camera and microphone back on to continue. Your timer is running.</p>
+      <button class="btn pri block mt16" data-ok>Turn camera & mic back on</button>`, 'badm');
     m.el.classList.add('cam');
     m.el.querySelector('[data-ok]').onclick = async () => {
-      try { cam.stream = null; await cam.start($('#pvid')); m.close(); pipState(true); evt('camera_back'); }
-      catch { toast('Camera still blocked. Allow camera access in the address bar.', 'bad'); }
+      try { cam.stream = null; await cam.start($('#pvid')); m.close(); pipState(true); evt('camera_back'); startMic(); }
+      catch { toast('Camera or microphone still blocked. Allow both in the address bar.', 'bad'); }
     };
   }).on('back', () => pipState(true));
-  if (!cam.alive()) cam.start($('#pvid')).catch(() => cam.emit('lost'));
+  if (!cam.alive()) { cam.stream = cam.micOn() ? cam.stream : null; cam.start($('#pvid')).then(startMic).catch(() => cam.emit('lost')); } else startMic();
   const stopFaces = watchFaces(cam, {
     onState: (n) => pipState(n === 1 || n === -1),
     onNoFace: () => violation('no_face'),
@@ -975,13 +1021,14 @@ function startExam(p, course) {
     }
     persistQ();
     snap('end');
+    try { X.qtDirty = true; await Promise.race([sendTimes(), sleep(4000)]); } catch {}
     let r = null;
     for (let i = 0; i < 6 && !r; i++) { try { r = await api('exam_submit', { p_attempt: p.attempt_id }); } catch { await sleep(2000); } }
     X.cleanup.forEach((f) => { try { f(); } catch {} });
     cam.stop(); exitFull(); document.body.classList.remove('examining'); netbar(false);
     wait.close(); RUN = null;
     if (!r) { toast('Could not reach the server. Your answers are saved — reopen the portal to see your result.', 'bad'); location.hash = ''; return route(); }
-    localStorage.removeItem('zpq_' + p.attempt_id);
+    localStorage.removeItem('zpq_' + p.attempt_id); localStorage.removeItem('zqt_' + p.attempt_id); localStorage.removeItem('zvc_' + p.attempt_id);
     sessionStorage.setItem('zp_res_' + r.attempt_id, JSON.stringify(r));
     location.hash = '#/r/' + r.attempt_id;
     resultView(r.attempt_id, r);
@@ -1195,7 +1242,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=16'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=17'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

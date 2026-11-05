@@ -13,12 +13,16 @@ export class Cam {
     this.video = video;
     if (!this.stream || !this.stream.active) {
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false,
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       const tr = this.stream.getVideoTracks()[0];
       tr.addEventListener('ended', () => { this.lost = true; this.emit('lost', 'ended'); });
       tr.addEventListener('mute', () => { this.lost = true; this.emit('lost', 'muted'); });
       tr.addEventListener('unmute', () => { this.lost = false; this.emit('back'); });
+      const mt = this.stream.getAudioTracks()[0];
+      if (!mt) { this.stop(); const e = new Error('no_mic'); e.name = 'NoMic'; throw e; }
+      mt.addEventListener('ended', () => { this.lost = true; this.emit('lost', 'mic'); });
     }
     video.srcObject = this.stream;
     video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
@@ -30,9 +34,10 @@ export class Cam {
   attach(video) { this.video = video; if (this.stream) { video.srcObject = this.stream; video.muted = true; video.setAttribute('playsinline', ''); video.play().catch(() => {}); } }
 
   alive() {
-    const tr = this.stream?.getVideoTracks()[0];
-    return !!(tr && tr.readyState === 'live' && tr.enabled && !tr.muted);
+    const tr = this.stream?.getVideoTracks()[0], mt = this.stream?.getAudioTracks()[0];
+    return !!(tr && tr.readyState === 'live' && tr.enabled && !tr.muted && mt && mt.readyState === 'live');
   }
+  micOn() { const mt = this.stream?.getAudioTracks()[0]; return !!(mt && mt.readyState === 'live'); }
 
   async loadDetector() {
     if (this.detTried) return !!this.det;

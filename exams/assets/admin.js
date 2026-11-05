@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=16';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=17';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -78,19 +78,23 @@ function setExamModal(R, sid, after) {
 let LIVE = null;
 async function wall() {
   frame(`<div class="phead spread"><div><h1>Live cameras</h1>
-      <div class="small muted">Video goes straight from each student's device to this screen — nothing passes through or is stored on the server. Hold 🎤 on a tile to speak to that student, or hold “Talk to all”.</div></div>
+      <div class="small muted">Video and sound come straight from each student's device. Press 🔈 on a tile to listen to that student. Hold 🎤 to speak to one student, or hold “Talk to all”. If a network blocks video, the tile shows a photo every 10 seconds instead.</div></div>
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
-    <div class="wall mt16" id="wg"><div class="spin"></div></div>
-    <p class="tiny dim mt16">If a tile stays on “Connecting”, the student's network (often mobile data) is blocking direct video — their camera photos are still saved as usual. Tap the tile to retry.</p>`);
-  let mod; try { mod = await import('./live.js?v=16'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+    <div class="lwall mt16" id="wg"><div class="spin"></div></div>
+    <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
+  let mod; try { mod = await import('./live.js?v=17'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
-    if (u.stream) { const v = t.querySelector('video'); v.srcObject = u.stream; v.play().catch(() => {}); t.querySelector('.ph').style.display = 'none'; }
+    const ph = t.querySelector('.ph'), im = t.querySelector('img.sn'), v = t.querySelector('video');
+    if (u.stream) { v.srcObject = u.stream; v.style.display = ''; v.play().catch(() => {}); ph.style.display = 'none'; im.style.display = 'none'; }
+    if (u.audio) { const a = t.querySelector('audio'); a.srcObject = u.audio; t.querySelector('.ls').style.display = ''; if (!a.muted) a.play().catch(() => {}); }
+    if (u.photo) { im.src = u.photo; im.style.display = 'block'; ph.style.display = 'none'; v.style.display = 'none'; t.dataset.snapAt = Date.now(); }
     if (u.state) { t.dataset.state = u.state; const p = t.querySelector('.st');
-      p.className = 'st pill ' + ({ connected: 'ok', live: 'ok', failed: 'bad', disconnected: 'warn' }[u.state] || '');
-      p.textContent = { connected: '● Live', live: '● Live', connecting: 'Connecting…', new: 'Connecting…', failed: 'No video', disconnected: 'Reconnecting…', closed: 'Closed' }[u.state] || u.state;
-      if (['failed', 'closed'].includes(u.state)) { const ph = t.querySelector('.ph'); ph.style.display = 'grid'; ph.textContent = 'No video — tap to retry'; } }
+      p.className = 'st pill ' + ({ connected: 'ok', live: 'ok', failed: 'bad', disconnected: 'warn', photo: 'info' }[u.state] || '');
+      p.textContent = { connected: '● Live', live: '● Live', connecting: 'Connecting…', new: 'Connecting…', failed: 'No video', disconnected: 'Reconnecting…', closed: 'Closed', photo: '📷 Photo · every 10 s' }[u.state] || u.state;
+      if (u.state === 'photo' && !u.photo && im.style.display !== 'block') { ph.style.display = 'grid'; ph.textContent = 'Video blocked by the network — waiting for a photo…'; }
+      if (['failed', 'closed'].includes(u.state)) { ph.style.display = 'grid'; ph.textContent = 'No video — tap to retry'; } }
   };
   if (!LIVE) LIVE = mod.adminLive(upd);
   const holdTalk = (el, key) => {
@@ -108,15 +112,18 @@ async function wall() {
     L.forEach((x) => {
       let t = tiles[x.key];
       if (!t) {
-        t = tiles[x.key] = document.createElement('div'); t.className = 'tile';
-        t.innerHTML = `<video playsinline muted autoplay></video><div class="ph">Connecting to camera…</div><span class="st pill">Connecting…</span>
-          <button class="btn sm tk" title="Hold to talk to this student">🎤</button><div class="cap"><b></b><span></span></div>`;
+        t = tiles[x.key] = document.createElement('div'); t.className = 'ltile';
+        t.innerHTML = `<video playsinline muted autoplay></video><img class="sn" alt=""><audio autoplay muted></audio><div class="ph">Connecting to camera…</div><span class="st pill">Connecting…</span>
+          <div class="tbtns"><button class="btn sm ls" style="display:none" title="Listen to this student">🔈</button><button class="btn sm tk" title="Hold to talk to this student">🎤</button></div><div class="cap"><b></b><span></span></div>`;
         t.querySelector('.ph').onclick = () => LIVE.retry(x.key);
+        t.querySelector('.ls').onclick = () => { const a = t.querySelector('audio'), b = t.querySelector('.ls');
+          a.muted = !a.muted; if (!a.muted) a.play().catch(() => {}); b.textContent = a.muted ? '🔈' : '🔊'; b.classList.toggle('pri', !a.muted); t.classList.toggle('listening', !a.muted); };
         holdTalk(t.querySelector('.tk'), x.key);
         g.appendChild(t); LIVE.watch(x);
       }
       t.querySelector('.cap b').textContent = x.name;
-      t.querySelector('.cap span').textContent = `${x.subject} · ${x.answered}/${x.total} answered · ${x.violations} warning${x.violations === 1 ? '' : 's'}${x.status === 'paused' ? ' · paused' : ''}`;
+      t.querySelector('.cap span').textContent = `${x.subject} · ${x.answered}/${x.total} answered · ${x.violations} warning${x.violations === 1 ? '' : 's'}${x.voice ? ` · 🎙 ${x.voice}` : ''}${x.status === 'paused' ? ' · paused' : ''}`;
+      t.classList.toggle('voiced', !!x.voice);
     });
   };
   $('#wR').onclick = load;
@@ -129,8 +136,20 @@ async function wall() {
 async function approve() {
   frame(`<div class="phead spread"><div><h1>Approvals</h1><div class="small muted">Open practical papers for students who passed their theory, and allow exam retakes. Each student is emailed automatically.</div></div>
     <button class="btn" id="apR">↻ Refresh</button></div>
-    <div id="ap1"><div class="spin"></div></div><div id="ap2" class="mt32"><div class="spin"></div></div><div id="ap3" class="mt32"><div class="spin"></div></div>`);
+    <div id="ap0"><div class="spin"></div></div><div id="ap1" class="mt32"><div class="spin"></div></div><div id="ap2" class="mt32"><div class="spin"></div></div><div id="ap3" class="mt32"><div class="spin"></div></div>`);
   $('#apR').onclick = approve;
+  rpc('exam_admin_voice_list', { p_days: 14 }).then((V) => {
+    const box = $('#ap0'); if (!box) return;
+    box.innerHTML = `<h3>🎙 Voice heard during exams · last 14 days · ${V.length}</h3>
+      <p class="small muted">Speech was picked up by the student's microphone (the student, someone else, or a phone/AI voice assistant). Press <b>▶ Review</b> to play the clips and see time spent on each question. Nothing is decided automatically — you judge.</p>
+      ${V.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th>Student</th><th>Subject</th><th>Times heard</th><th>At questions</th><th>Result</th><th>Last</th><th></th></tr>
+        ${V.map((x) => `<tr><td><a href="#" data-stu="${x.student_id}"><b>${esc(x.name)}</b></a>${x.test ? ' <span class="pill">test</span>' : ''}<div class="tiny dim">${esc(x.email)}</div></td><td>${esc(x.subject)}</td>
+          <td><b>${x.voice}</b> <span class="tiny dim">· ${x.clips} clip${x.clips === 1 ? '' : 's'}</span></td><td class="small">${(x.qs || []).filter((q) => q != null).sort((a, b) => a - b).map((q) => 'Q' + q).join(', ') || '—'}</td>
+          <td class="small">${x.status === 'done' ? (x.held ? 'on hold' : `${esc(x.grade || '')} · ${x.score ?? 0}/${x.max ?? 0}`) : esc(x.status)}</td><td class="small">${fmtDT(x.last)}</td>
+          <td><button class="btn sm pri" data-ev="${x.attempt_id}" data-done="${x.status === 'done' ? 1 : 0}">▶ Review</button></td></tr>`).join('')}</table></div>` : '<div class="empty mt8">No speech heard in any exam.</div>'}`;
+    $$('#ap0 [data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu, approve); }));
+    $$('#ap0 [data-ev]').forEach((b) => (b.onclick = () => (b.dataset.done === '1' ? reportModal(b.dataset.ev) : voiceModal(b.dataset.ev))));
+  }).catch(() => { const box = $('#ap0'); if (box) box.innerHTML = ''; });
   let P = [], R = [];
   const all = (box, attr) => { const c = $(`#${box} [data-all]`); if (c) c.onchange = () => $$(`#${box} [${attr}]`).forEach((x) => (x.checked = c.checked)); };
   let B = [];
@@ -422,14 +441,51 @@ function cellModal(s, sid, after) {
       override: $('#ov', m.el).value, done_external: $('#ex', m.el).checked, ...($('#ex', m.el).checked && !c.ext ? { ext_note: 'Completed earlier' } : {}) } }), 'Saved', after); };
 }
 
+// ---- voice clips + time per question
+const secTxt = (n) => (n == null ? '—' : n >= 60 ? `${Math.floor(n / 60)}m ${String(n % 60).padStart(2, '0')}s` : `${n}s`);
+function clipsHtml(E) {
+  const C = (E.clips || []), heard = C.filter((c) => c.kind === 'voice'), files = C.filter((c) => c.path);
+  if (!C.length) return '<div class="small muted mt8">🎙 No speech was heard in this exam.</div>';
+  return `<div class="sec"><h4>🎙 Voice heard ${heard.length} time${heard.length === 1 ? '' : 's'}${heard.length ? ' · at ' + [...new Set(heard.map((c) => 'Q' + c.q))].join(', ') : ''}</h4>
+    ${files.length ? `<div class="clips">${files.map((c) => `<div class="clip" data-clip="${esc(c.path)}" data-kind="${c.kind}">
+      <div class="small"><b>${c.kind === 'av' ? '🎥 Video + sound' : '🔉 Sound just before'}</b> · Q${c.q ?? '?'}</div>
+      <div class="pl tiny dim mt8">loading…</div><div class="t">${fmtDT(c.at)} · ${c.secs ?? '?'} s · ${Math.round((c.bytes || 0) / 1024)} KB</div></div>`).join('')}</div>`
+      : '<div class="small muted">Speech was heard but no clip reached the server (old page, or upload failed).</div>'}</div>`;
+}
+async function bindClips(el) {
+  const boxes = $$('[data-clip]', el); if (!boxes.length) return;
+  let urls = [];
+  try { const { data, error } = await sb.storage.from('exam-clips').createSignedUrls(boxes.map((b) => b.dataset.clip), 3600); if (error) throw error; urls = data || []; }
+  catch (e) { boxes.forEach((b) => (b.querySelector('.pl').textContent = 'Could not load: ' + (e.message || e))); return; }
+  boxes.forEach((b, i) => {
+    const u = urls[i]?.signedUrl; const pl = b.querySelector('.pl');
+    if (!u) { pl.textContent = 'File missing'; return; }
+    pl.outerHTML = b.dataset.kind === 'av' ? `<video controls preload="metadata" playsinline src="${esc(u)}"></video>` : `<audio controls preload="metadata" src="${esc(u)}"></audio>`;
+    // browser-recorded clips carry no length → find it once so the seek bar works
+    const v = b.querySelector('video,audio');
+    v.addEventListener('loadedmetadata', () => { if (v.duration === Infinity) { v.currentTime = 1e7; v.addEventListener('timeupdate', function f() { v.removeEventListener('timeupdate', f); v.currentTime = 0; }); } }, { once: true });
+  });
+}
+async function voiceModal(attemptId) {
+  let E; try { E = await rpc('exam_admin_evidence', { p_attempt: attemptId }); } catch (e) { return toast(errText(e), 'bad'); }
+  const m = modal(`<div class="spread"><h2 style="margin:0">Voice clips</h2><button class="btn ghost" data-x>Close</button></div>${clipsHtml(E)}
+    <div class="sec"><h4>Time on each question</h4><div class="small">${(E.times || []).map((t, i) => `Q${i + 1} ${secTxt(t)}`).join(' · ')}</div></div>`, 'wide');
+  m.el.querySelector('[data-x]').onclick = m.close; bindClips(m.el);
+}
 async function reportModal(attemptId) {
-  let r; try { r = await rpc('exam_result', { p_attempt: attemptId }); } catch (e) { return toast(errText(e), 'bad'); }
+  let r, E; try { [r, E] = await Promise.all([rpc('exam_result', { p_attempt: attemptId }), rpc('exam_admin_evidence', { p_attempt: attemptId }).catch(() => ({ times: [], clips: [] }))]); } catch (e) { return toast(errText(e), 'bad'); }
+  const T = E.times || [], vq = new Set((E.clips || []).filter((c) => c.kind === 'voice').map((c) => c.q));
+  const known = T.filter((x) => x != null), avg = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0;
   const m = modal(`<div class="spread"><div><div class="small muted">${esc(LV[r.level])} level · ${fmtDT(r.submitted_at)}</div><h2>${esc(r.subject)} — ${esc(r.grade)}</h2></div><button class="btn ghost" data-x>Close</button></div>
     <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${r.passed ? 'ok' : 'bad'}">${r.score}/${r.max} · ${r.percent}%</span><span class="pill">${r.correct} correct · ${r.answered} answered of ${r.total}</span>
-      <span class="pill warn">${r.violations} warnings</span><span class="pill">${esc(r.how)}</span></div>
-    ${r.review.map((q) => `<div class="rv"><div class="spread"><b>Q${q.n}</b><span class="pill ${q.your == null ? '' : q.your === q.correct ? 'ok' : 'bad'}">${q.your == null ? 'skipped' : q.your === q.correct ? '+' + q.marks : '0'}</span></div>
-      <div class="small mt8">${esc(q.q)}</div>${q.options.map((o, i) => `<div class="o ${i === q.correct ? 'c' : i === q.your ? 'w' : ''}"><b>${'ABCD'[i]}</b> ${esc(o)}</div>`).join('')}</div>`).join('')}`, 'wide');
-  m.el.querySelector('[data-x]').onclick = m.close;
+      <span class="pill warn">${r.violations} warnings</span><span class="pill">${esc(r.how)}</span>${vq.size ? `<span class="pill bad">🎙 voice at ${vq.size} question${vq.size === 1 ? '' : 's'}</span>` : ''}
+      ${known.length ? `<span class="pill">avg ${secTxt(Math.round(avg))} per question</span>` : ''}</div>
+    ${clipsHtml(E)}
+    ${r.review.map((q) => { const t = T[q.n - 1], slow = t != null && avg && t > Math.max(45, avg * 2.2);
+      return `<div class="rv ${vq.has(q.n) ? 'voiceq' : ''}"><div class="spread"><b>Q${q.n} ${vq.has(q.n) ? '🎙' : ''}</b><div class="row" style="gap:6px"><span class="qt ${slow ? 'slow' : ''}" title="Time spent on this question">⏱ ${secTxt(t)}</span>
+      <span class="pill ${q.your == null ? '' : q.your === q.correct ? 'ok' : 'bad'}">${q.your == null ? 'skipped' : q.your === q.correct ? '+' + q.marks : '0'}</span></div></div>
+      <div class="small mt8">${esc(q.q)}</div>${q.options.map((o, i) => `<div class="o ${i === q.correct ? 'c' : i === q.your ? 'w' : ''}"><b>${'ABCD'[i]}</b> ${esc(o)}</div>`).join('')}</div>`; }).join('')}`, 'wide');
+  m.el.querySelector('[data-x]').onclick = m.close; bindClips(m.el);
 }
 
 // ================================================================= student drawer
@@ -440,7 +496,7 @@ async function studentDrawer(id, after) {
   const close = () => { d.remove(); document.removeEventListener('keydown', esc1); after && after(); };
   const esc1 = (e) => e.key === 'Escape' && close();
   document.addEventListener('keydown', esc1);
-  let R, RP; try { [R, RP] = await Promise.all([rpc('exam_admin_student', { p_id: id }), rpc('exam_admin_student_prac', { p_id: id }).catch(() => [])]); } catch (e) { d.remove(); return toast(errText(e), 'bad'); }
+  let R, RP, VC; try { [R, RP, VC] = await Promise.all([rpc('exam_admin_student', { p_id: id }), rpc('exam_admin_student_prac', { p_id: id }).catch(() => []), rpc('exam_admin_student_voice', { p_student: id }).catch(() => ({}))]); } catch (e) { d.remove(); return toast(errText(e), 'bad'); }
   const s = R.student;
   d.innerHTML = `<div class="dh"><div class="avatar" style="width:44px;height:44px">${esc(initials(s.name))}</div>
       <div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3><div class="small muted">${esc(s.email)}${s.alt_emails?.length ? ' · alt: ' + esc(s.alt_emails.join(', ')) : ''}</div></div>
@@ -486,7 +542,7 @@ async function studentDrawer(id, after) {
           ${a.status === 'done' ? `<span class="pill ${a.passed ? 'ok' : 'bad'}">${esc(a.grade)} · ${a.score}/${a.max}</span>` : `<span class="pill ${a.status === 'paused' ? 'bad' : 'info'}">${a.status}</span>`}</div>
           <div class="small muted mt8">Answered ${a.answered}/${a.total} · warnings ${a.violations} · ${esc(a.how || 'running')}${a.submitted_at ? ' · ended ' + fmtTime(a.submitted_at) : ' · deadline ' + fmtTime(a.deadline_at)}
             ${a.device?.ua ? `<br><span class="tiny dim">${esc(a.device.ua.slice(0, 110))}</span>` : ''}</div>
-          <div class="row mt8" style="gap:6px">${a.status === 'done' ? `<button class="btn sm" data-rep="${a.id}">Question-wise report</button>`
+          <div class="row mt8" style="gap:6px">${VC?.[a.id] ? `<button class="btn sm bad" data-${a.status === 'done' ? 'rep' : 'voc'}="${a.id}">🎙 Voice ×${VC[a.id].voice} · ${VC[a.id].clips} clip${VC[a.id].clips === 1 ? '' : 's'}</button>` : ''}${a.status === 'done' ? `<button class="btn sm" data-rep="${a.id}">Question-wise report</button>`
             : `${a.status === 'paused' ? `<button class="btn sm ok" data-act="resume" data-a="${a.id}">Resume</button>` : `<button class="btn sm" data-act="extend" data-a="${a.id}">+ time</button>`}
                <button class="btn sm bad" data-act="end" data-a="${a.id}">End</button>`}</div></div>`).join('') : '<div class="empty">No attempts yet.</div>'}</div>
 
@@ -508,6 +564,7 @@ async function studentDrawer(id, after) {
   $$('[data-ov]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_set_unlock', { p_students: [id], p_subjects: [b.dataset.ov],
     p: b.value === 'ext' ? { done_external: true, ext_note: 'Completed earlier', override: 'auto' } : { done_external: false, override: b.value } }), 'Saved', reload)));
   $$('[data-rep]', d).forEach((b) => (b.onclick = () => reportModal(b.dataset.rep)));
+  $$('[data-voc]', d).forEach((b) => (b.onclick = () => voiceModal(b.dataset.voc)));
   $$('[data-spec]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_spec_set', { p_student: id, p_course: b.dataset.spec, p_spec: b.value }), 'Specialisation saved', reload)));
   $$('a[href^="#/prac/"]', d).forEach((a) => a.addEventListener('click', () => d.remove()));
   $$('[data-act]', d).forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, reload)));
@@ -946,7 +1003,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=16');
+        const { practicalPDF } = await import('./pdf.js?v=17');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
