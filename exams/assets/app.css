@@ -576,3 +576,69 @@ a.kpi-a,.kpi>a{display:block}
 .rv .qt{font-size:12px;color:var(--mute)}
 .rv.voiceq{border-color:rgba(250,204,21,.55)}
 .rv .qt.slow{color:#fcd34d;font-weight:600}
+
+/* ===== v18 · polish: scrollbars, tiles, padding, new student blocks ===== */
+:root{color-scheme:dark}
+*{scrollbar-width:thin;scrollbar-color:#3a3f4b transparent}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:#4d5363;background-clip:padding-box}
+*::-webkit-scrollbar-corner{background:transparent}
+.ico{display:inline-block;vertical-align:-3px;flex:none}
+.btn .ico{margin-right:2px}
+/* KPI tiles: equal height, number on top, label always at the same place */
+.kpi{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.kpi>div,.kpi>a{display:flex;flex-direction:column;justify-content:flex-start;min-height:108px;padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s}
+.kpi>a:hover{border-color:var(--zica);transform:translateY(-2px)}
+.kpi b{font-size:30px;letter-spacing:-.5px;margin-bottom:6px}
+.kpi small{font-size:13px;color:var(--ink2);font-weight:600;line-height:1.25}
+.kpi i{font-style:normal;font-size:11.5px;color:var(--dim);margin-top:auto;padding-top:6px;line-height:1.3}
+.kpi>div::after,.kpi>a::after{content:"";position:absolute;right:-30px;top:-30px;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(236,106,34,.10),transparent 70%);pointer-events:none}
+/* tables: breathing room left / right */
+.tbl th:first-child,.tbl td:first-child{padding-left:16px}
+.tbl th:last-child,.tbl td:last-child{padding-right:16px}
+.card>.tscroll,.card .tscroll{margin-left:0;margin-right:0}
+/* student: grading */
+.lvgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.lv{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:linear-gradient(160deg,rgba(255,255,255,.03),transparent)}
+.lv.easy{border-color:rgba(34,197,94,.35)} .lv.medium{border-color:rgba(91,156,255,.4)} .lv.hard{border-color:rgba(255,77,106,.4)}
+.lv ul{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:6px}
+.lv li{display:flex;justify-content:space-between;font-size:13px;color:var(--mute)} .lv li b{color:var(--ink)}
+.lv .gradechip{position:static;transform:none;width:auto;height:auto;padding:3px 10px;font-size:13px}
+/* student: exams grouped by course / module */
+.exgroup{margin-top:14px;border:1px solid var(--line);border-radius:20px;padding:14px 16px 16px;background:linear-gradient(160deg,color-mix(in srgb,var(--a1) 8%,var(--card)),var(--bg2))}
+.exhead{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.exhead>div{flex:1;min-width:0} .exhead b{font-family:var(--disp);font-size:16px}
+.exhead .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(150deg,var(--a1),var(--a2));color:#fff;font-weight:800;font-size:13px;flex:none}
+.exgroup .modlab{margin:12px 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--a2)}
+.exgroup .cannow{margin-top:0}
+/* student: assignments button on every subject card */
+.asgbtn{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:14px;text-decoration:none;color:var(--ink);
+  border:1px solid color-mix(in srgb,var(--a1) 45%,var(--line));background:color-mix(in srgb,var(--a1) 9%,var(--bg2))}
+.asgbtn .ai{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(150deg,var(--a1),var(--a2));color:#fff;font-weight:800;flex:none}
+.asgbtn span:nth-child(2){flex:1;min-width:0} .asgbtn b{display:block;font-size:13.5px} .asgbtn small{display:block;font-size:12px;color:var(--mute)}
+.asgbtn .go{color:var(--a2);font-size:20px}
+.asgbtn.done{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.07)} .asgbtn.done .ai{background:var(--ok)}
+.asgbtn.glow,.glowbtn{animation:glowp 2.4s ease-in-out infinite}
+@keyframes glowp{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a1) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--a1) 22%,transparent),0 0 22px color-mix(in srgb,var(--a1) 45%,transparent)}}
+@media (prefers-reduced-motion:reduce){.asgbtn.glow,.glowbtn{animation:none}}
+/* booking: times by part of day */
+.tparts{display:grid;gap:10px}
+.tpart .tlab{font-size:12px;color:var(--mute);margin:2px 0 6px;font-weight:600}
+.tpart .chips.times{margin:0}
+/* practical papers info */
+.pracinfo{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:0 0 14px}
+.pracinfo>div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card)}
+.pracinfo b{display:block;font-size:14px;margin-bottom:4px} .pracinfo span{font-size:13px;color:var(--mute);line-height:1.5}
+/* admin: grid cell → schedule */
+.setnow{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:16px;border:1px solid color-mix(in srgb,var(--zica) 50%,var(--line));background:linear-gradient(135deg,rgba(236,106,34,.12),transparent)}
+.setnow>div{flex:1} .setnow b{display:flex;gap:8px;align-items:center} .setnow span{display:block;font-size:12.5px;color:var(--mute);margin-top:3px}
+.asgline{border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.asgline b{font-size:13px} .asgline span{float:right;font-size:13px;color:var(--ink2)} .asgline .prog{margin-top:10px;clear:both}
+.pracinfo b{display:inline;font-size:inherit;margin:0} .pracinfo>div>b{display:block;font-size:14px;margin-bottom:4px}
+.pracinfo span b{color:var(--ink)}
+/* comfortable side gutters everywhere */
+.wrap{padding:0 clamp(16px,3vw,36px)}
+#admin main.wrap{padding-top:4px;padding-bottom:28px}
+.card{padding:clamp(16px,2vw,24px)}

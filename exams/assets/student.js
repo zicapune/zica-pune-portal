@@ -1,9 +1,9 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=17';
-import { Cam, watchFaces } from './proctor.js?v=17';
-import { mock } from './demo.js?v=17';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=17';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=18';
+import { Cam, watchFaces } from './proctor.js?v=18';
+import { mock } from './demo.js?v=18';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=18';
 
 const app = $('#app');
 const cam = new Cam();
@@ -23,11 +23,11 @@ function examRules() {
   return [
     ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
     ['camera', 'My camera and microphone stay on, and my face stays in the frame', `If my face leaves the camera, more than one face appears, or the camera or microphone goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
-    ['voice', 'I will stay silent — no reading questions aloud, no voice assistants', 'The microphone listens during the whole exam. If speech is heard — me, another person, or a phone/AI voice assistant such as ChatGPT or Gemini — a short video-and-sound clip is recorded and the Academic Head reviews it. A red <b>● REC</b> badge shows on my screen whenever a clip is being recorded. The Academic Head may also watch and listen live; a <b>👁 Being watched</b> badge shows when that happens.'],
+    ['voice', 'I will stay silent — no reading questions aloud, no voice assistants', 'The microphone listens during the whole exam. If speech is heard — me, another person, or a phone/AI voice assistant such as ChatGPT or Gemini — a short video-and-sound clip is recorded and the academic team reviews it. A red <b>● REC</b> badge shows on my screen whenever a clip is being recorded. The academic team may also watch and listen live at any time during the exam.'],
     ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked. On a phone, turn on Do Not Disturb first — a call or pop-up that covers the exam counts as a warning.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
-    ['record', 'I agree my activity is recorded', 'Logins, answers, time spent on each question, tab switches, camera photos and voice clips are saved to my student record and seen only by the Academic Head.'],
+    ['record', 'I agree my activity is recorded', 'Logins, answers, time spent on each question, tab switches, camera photos and voice clips are saved to my student record and seen only by the academic team.'],
   ];
 }
 const rulesList = () => `<ul class="rlist">${examRules().map((r) => `<li><b>${esc(r[1])}</b><span>${r[2]}</span></li>`).join('')}</ul>`;
@@ -179,7 +179,7 @@ async function homeView() {
         <h3 class="mt8">${esc(live.name)}</h3><div class="small muted">Your timer is running. Resume now to keep answering.</div></div>
         <a class="btn pri" href="#/s/${encodeURIComponent(live.course.id)}/${live.id}">Resume exam</a></div></div>` : ''}
     ${canNowBlock()}
-    ${ME.courses.length ? `<h3 class="mt32">Your courses</h3><div class="grid courses mt16">${cards}</div>`
+    ${ME.courses.length ? `<div class="spread mt32" data-tour="courses"><h3 style="margin:0">Your courses & assignments</h3><span class="small muted">Open a course for its exams, assignment briefs and practical papers</span></div><div class="grid courses mt16">${cards}</div>`
       : `<div class="empty mt24">No courses are linked to your account yet. Please contact the Academic Head.</div>`}
     ${historyBlock()}
     ${howItWorks()}
@@ -208,8 +208,20 @@ function canNowBlock() {
     return `<div class="it ${['ready', 'book', 'missed'].includes(x.state) ? 'go' : ''}">${swTile(x.id, x.short || x.name.slice(0, 2))}
       <div class="meta"><h4>${esc(x.name)}</h4><div class="row" style="gap:6px;margin-top:5px;flex-wrap:wrap"><span class="pill ${t[0]}">${esc(t[1])}</span></div></div>${t[2]}</div>`;
   };
-  return `<div class="mt24"><div class="spread"><h3>Your exams</h3><span class="small muted">Easy · Medium · Hard — you choose · 2 attempts each</span></div>
-    <div class="cannow">${items.map(row).join('')}</div></div>`;
+  // group: course → module (modules come from the practical papers that need each software)
+  const modOf = (c, sid) => { const ms = (PR[c.id]?.papers || []).filter((p) => !isSW(p) && (p.reqs || []).some((r) => r.id === sid)).map((p) => +p.module);
+    return ms.length ? Math.min(...ms) : null; };
+  const byCourse = [];
+  items.forEach((x) => { let g = byCourse.find((y) => y.c.id === x.course.id); if (!g) byCourse.push(g = { c: x.course, list: [] }); g.list.push(x); });
+  const block = (g) => {
+    const mods = [...new Set(g.list.map((x) => modOf(g.c, x.id)))].sort((a, b) => (a ?? 99) - (b ?? 99));
+    const multi = mods.length > 1 || mods[0] != null;
+    return `<div class="exgroup" data-fam="${g.c.family}"><div class="exhead"><span class="ic">${esc(courseIcon(g.c))}</span><div><b>${esc(g.c.name)}</b>
+        <div class="tiny dim">${g.list.length} exam${g.list.length === 1 ? '' : 's'} need${g.list.length === 1 ? 's' : ''} you</div></div><a class="btn sm ghost" href="#/c/${encodeURIComponent(g.c.id)}">Open course ›</a></div>
+      ${mods.map((m) => `${multi ? `<div class="modlab">${m == null ? 'Other software' : 'Module ' + m}</div>` : ''}<div class="cannow">${g.list.filter((x) => modOf(g.c, x.id) === m).map(row).join('')}</div>`).join('')}</div>`;
+  };
+  return `<div class="mt24" data-tour="exams"><div class="spread"><h3>Your exams</h3><span class="small muted">Easy · Medium · Hard — you choose · 2 attempts each</span></div>
+    ${byCourse.map(block).join('')}</div>`;
 }
 function courseIcon(c) {
   const m = c.name.match(/\b(PCDP|PDP|PP|UI|VFX|3D|2D|Gen AI)\b/i);
@@ -227,15 +239,19 @@ function historyBlock() {
   </div>`;
 }
 function howItWorks() {
-  const L = ME.settings.levels, M = ME.settings.marks;
-  return `<div class="card mt32"><h3>How grading works</h3>
-    <p class="muted small" style="margin:6px 0 0">Every exam has 50 questions and 60 minutes. You choose the level before the paper opens; your level decides the highest grade you can earn. Each question shows its marks.</p>
-    <div class="grid mt16" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      ${['easy', 'medium', 'hard'].map((k) => `<div class="pill" style="justify-content:space-between;padding:10px 14px;border-radius:12px">
-        <span>${LEVEL_TXT[k].t} · ${paperTotal(L[k], M)} marks</span><b>max ${L[k].cap}</b></div>`).join('')}
-    </div>
-    <div class="bands">${ME.settings.bands.map((b) => `<span><b>${b[0]}</b>${b[1] ? b[1] + '%+' : '<40%'}</span>`).join('')}</div>
-    <p class="small dim" style="margin:10px 0 0">Pass mark: ${ME.settings.pass_pct}% of your paper.</p></div>`;
+  const L = ME.settings.levels, M = ME.settings.marks, B = ME.settings.bands, pp = ME.settings.pass_pct;
+  const capOf = (k) => L[k].cap, bandOf = (pct) => (B.find((b) => pct >= b[1]) || B[B.length - 1])[0];
+  const order = B.map((b) => b[0]);
+  const gradeFor = (k, pct) => { const g = bandOf(pct); return order.indexOf(g) < order.indexOf(capOf(k)) ? capOf(k) : g; };
+  return `<div class="card mt32 grading"><h3>How grading works</h3>
+    <p class="muted small" style="margin:6px 0 0">Every exam has <b style="color:var(--ink)">50 questions · ${ME.settings.duration || 60} minutes</b>. Before the paper opens you pick a level. <b style="color:var(--ink)">The level decides two things:</b> how many marks the paper carries, and the <b style="color:var(--ink)">highest grade you can get</b> — even a perfect score on Easy stays at ${capOf('easy')}.</p>
+    <div class="lvgrid mt16">${['easy', 'medium', 'hard'].map((k) => { const t = paperTotal(L[k], M); return `<div class="lv ${k}">
+      <div class="spread"><b>${LEVEL_TXT[k].t}</b><span class="gradechip">${capOf(k)}</span></div>
+      <div class="tiny muted mt8">${LEVEL_TXT[k].d}</div>
+      <ul><li><span>Total</span><b>${t} marks</b></li><li><span>Pass at ${pp}%</span><b>${Math.ceil(t * pp / 100)} marks</b></li><li><span>Highest grade</span><b>${capOf(k)}</b></li></ul></div>`; }).join('')}</div>
+    <h4 class="mt16" style="margin-bottom:6px">Your grade from your percentage</h4>
+    <div class="bands">${B.map((b) => `<span><b>${b[0]}</b>${b[1] ? b[1] + '%+' : 'below ' + pp + '%'}</span>`).join('')}</div>
+    <div class="notice small mt16"><b>Example — you score 85%:</b> on Hard you get <b>${gradeFor('hard', 85)}</b>, on Medium <b>${gradeFor('medium', 85)}</b>, on Easy <b>${gradeFor('easy', 85)}</b> (Easy is capped at ${capOf('easy')}). Below ${pp}% is F on every level — you can book a retake.</div></div>`;
 }
 const paperTotal = (lv, M) => lv.E * M.E + lv.M * M.M + lv.H * M.H;
 const cap = (s) => String(s || '').replace(/^./, (c) => c.toUpperCase());
@@ -316,10 +332,10 @@ function subjectCard(c, s, i) {
       action = `<div class="small muted">Exams follow your course order. Book a date for <b style="color:var(--ink)">${esc(s.seq_block)}</b> first — then you can book this one too (for a later date).</div>`; break;
     case 'assignments':
       status = `<span class="pill warn">Assignments ${got}/${A.need} needed</span>`;
-      action = `<div class="small muted" style="margin-bottom:8px">${A.mode === 'submitted' ? 'Submit' : 'Get approved'} at least ${A.need} of ${A.req} assignments (${A.pct}%) to unlock this exam.</div><a class="btn sm" href="${ahref}">Open assignments</a>`; break;
+      action = `<div class="small muted">${A.mode === 'submitted' ? 'Submit' : 'Get approved'} at least ${A.need} of ${A.req} assignments (${A.pct}%) to unlock this exam.</div>`; break;
     case 'held':
       status = `<span class="pill warn">⏳ Result on hold</span>`;
-      action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result and certificate unlock once you submit all ${A.req} assignments — ${A.submitted || 0} of ${A.req} submitted so far.</div><a class="btn pri sm" href="${ahref}">Submit assignments</a> ${`<button class="btn sm ghost" data-book="${s.id}">Request a retake</button>`}`; break;
+      action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result and certificate unlock once you submit all ${A.req} assignments — ${A.submitted || 0} of ${A.req} submitted so far.</div><button class="btn sm" data-book="${s.id}">🔁 Book a retake</button>`; break;
     case 'exempt':
       status = `<span class="pill ok">✓ Completed earlier</span>`;
       action = `<div class="small muted">${esc(s.ext_note || 'Marked complete by the Academic Head.')}</div>`; break;
@@ -337,10 +353,12 @@ function subjectCard(c, s, i) {
       action = `<div class="small muted">This paper isn't ready yet. You'll be informed.</div>`; break;
     case 'done':
       status = s.best ? `<span class="pill ${s.best.passed ? 'ok' : 'bad'}">${s.best.passed ? 'Passed' : 'Not passed'} · ${s.best.score}/${s.best.max}</span>` : '<span class="pill">Attempts used</span>';
-      action = `${s.best ? `<a class="btn sm" href="#/r/${s.best.attempt_id}">View report</a> ` : ''}${`<button class="btn sm ghost" data-book="${s.id}">Request a retake</button>`}<div class="tiny dim mt8">All attempts used. Camera / internet problem, or want a better grade? Request a retake.</div>`; break;
+      action = `${s.best ? `<a class="btn sm" href="#/r/${s.best.attempt_id}">View report</a> ` : ''}<button class="btn sm ${s.best?.passed ? '' : 'pri'}" data-book="${s.id}">🔁 Book a retake</button><div class="tiny dim mt8">Camera / internet problem, or want a better grade? Book a retake — the academic team confirms it.</div>`; break;
   }
-  const assignLine = A.req > 0 && !['assignments', 'exempt', 'held'].includes(s.state)
-    ? `<a class="small" href="${ahref}" style="display:block;margin-top:10px;color:var(--ink2)">📁 Assignments ${A.submitted || 0}/${A.req} submitted${A.redo ? ` · ${A.redo} to redo` : ''} · <span style="color:var(--a1)">all ${A.req} needed for your result & certificate</span> ›</a>` : '';
+  const allIn = A.req > 0 && (A.submitted || 0) >= A.req;
+  const assignLine = A.req > 0 && s.state !== 'exempt'
+    ? `<a class="asgbtn ${allIn ? 'done' : 'glow'}" href="${ahref}"><span class="ai">${allIn ? '✓' : '⬇'}</span><span><b>${allIn ? 'Assignments all submitted' : 'Download assignments'}</b>
+        <small>${A.submitted || 0} of ${A.req} submitted · ${A.approved || 0} approved${A.redo ? ` · ${A.redo} to redo` : ''}${allIn ? '' : ' · all needed for your result'}</small></span><span class="go">›</span></a>` : '';
   const on = ['ready', 'live', 'book', 'missed'].includes(s.state);
   return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing'].includes(s.state) ? 'locked' : ''}">
     ${swTile(s.id, s.short || s.name.slice(0, 2))}
@@ -370,7 +388,7 @@ async function bookModal(c, s) {
     ${kind === 'retake' ? `<label class="lb">Reason for the retake *</label><select class="inp" id="bkR">${RSN.map((r) => `<option>${r}</option>`).join('')}</select>` : ''}
     ${s.slot && kind === 'reschedule' ? `<div class="pill info">Current: ${fmtRange(s.slot.starts_at, s.slot.ends_at)}</div>` : ''}
     <label class="lb">Day</label><div class="chips" id="bkD">${dayList.map((x, i) => `<button class="chip" data-d="${i}"><small>${x.d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short' })}</small><b>${x.d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })}</b></button>`).join('')}</div>
-    <label class="lb">Start time (IST)</label><div class="chips times" id="bkT"><div class="small dim">Pick a day first.</div></div>
+    <label class="lb">Start time (India time · AM / PM)</label><div class="tparts" id="bkT"><div class="small dim">Pick a day first.</div></div>
     <label class="lb">${kind === 'new' ? 'Note for the Academic Head (optional)' : kind === 'retake' ? 'What happened? (required for “Other”)' : 'Reason (required)'}</label>
     <textarea class="inp" rows="3" id="bkN" maxlength="1500" placeholder="${kind === 'missed' ? 'e.g. I was unwell on that day.' : kind === 'reschedule' ? 'e.g. I have a college exam that day.' : kind === 'retake' ? 'e.g. My camera kept freezing at question 12.' : 'e.g. I prefer the lab PC.'}"></textarea>
     <details class="bkrules mt16" open><summary><b>Exam-day rules</b> — read before you book</summary>${rulesList()}
@@ -380,14 +398,20 @@ async function bookModal(c, s) {
   const ok = m.el.querySelector('[data-ok]');
   const ack = () => $('#bkAck', m.el).classList.contains('on');
   $('#bkAck', m.el).onclick = (e) => { e.preventDefault(); $('#bkAck', m.el).classList.toggle('on'); ok.disabled = !(time && ack()); };
+  const PARTS = [['🌅 Morning', 5, 12], ['☀️ Afternoon', 12, 17], ['🌆 Evening', 17, 21], ['🌙 Night', 21, 24], ['🌌 Late night / early morning', 0, 5]];
   const drawTimes = () => {
     const x = dayList[day]; const out = [];
-    for (let h = h0; h < h1; h++) for (const mm of ['00', '30']) {
-      const iso = `${x.key}T${String(h).padStart(2, '0')}:${mm}:00+05:30`; const at = Date.parse(iso);
-      const busy = load[`${x.key}T${String(h).padStart(2, '0')}`] || 0;
-      const dis = at < minAt || busy >= 20;
-      out.push(`<button class="chip t ${time === iso ? 'on' : ''}" data-t="${iso}" ${dis ? 'disabled' : ''} title="${busy ? busy + ' booked' : ''}">${fmtTime(iso)}${busy >= 12 && !dis ? '<i>busy</i>' : ''}</button>`);
-    }
+    PARTS.forEach(([lab, a, b]) => {
+      const chips = [];
+      for (let h = Math.max(a, h0); h < Math.min(b, h1); h++) for (const mm of ['00', '30']) {
+        const iso = `${x.key}T${String(h).padStart(2, '0')}:${mm}:00+05:30`; const at = Date.parse(iso);
+        const busy = load[`${x.key}T${String(h).padStart(2, '0')}`] || 0;
+        if (at < minAt) continue;
+        const dis = busy >= 20;
+        chips.push(`<button class="chip t ${time === iso ? 'on' : ''}" data-t="${iso}" ${dis ? 'disabled' : ''} title="${busy ? busy + ' booked' : ''}">${fmtTime(iso)}${busy >= 12 && !dis ? '<i>busy</i>' : ''}</button>`);
+      }
+      if (chips.length) out.push(`<div class="tpart"><div class="tlab">${lab}</div><div class="chips times">${chips.join('')}</div></div>`);
+    });
     $('#bkT', m.el).innerHTML = out.join('') || '<div class="small dim">No times left on this day.</div>';
     $$('[data-t]', m.el).forEach((b) => (b.onclick = () => { time = b.dataset.t; drawTimes(); ok.disabled = !ack(); }));
   };
@@ -432,7 +456,7 @@ async function assignView(cid, sid) {
     <div class="phead"><div class="crumb"><a href="#/">Home</a> › ${c ? `<a href="#/c/${encodeURIComponent(cid)}">${esc(c.name)}</a> › ` : ''}<span>${esc(d.subject?.name)} assignments</span></div>
       <div class="spread"><div class="row">${swTile(d.subject?.id, d.subject?.short || '')}<div><h1>${esc(d.subject?.name)} · Assignments</h1>
         <div class="muted small">Client-style briefs. Do the work, upload to Google Drive (link: “Anyone with the link can view”) and submit the link here.</div></div></div>
-        ${d.items.length ? `<button class="btn" id="dlAll">⬇ Download assignment PDF</button>` : ''}</div></div>
+        ${d.items.length ? `<button class="btn pri glowbtn" id="dlAll">⬇ Download assignment PDF</button>` : ''}</div></div>
     ${P.req ? `<div class="card"><div class="spread"><h3>${got} of ${P.req} ${P.mode === 'submitted' ? 'submitted' : 'approved'}</h3>
         <span class="pill ${got >= P.need ? 'ok' : 'warn'}">${got >= P.need ? '✓ Exam requirement met' : `${P.need} needed for the exam (${P.pct}%)`}</span></div>
         <div class="prog mt8"><i style="width:${pct}%"></i></div>
@@ -484,7 +508,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=17'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=18'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -654,7 +678,7 @@ function startExam(p, course) {
       <div style="flex:1"></div>
       <div class="xbadges"><span class="xb mic" id="xbMic" title="Your microphone is on. Speech during the exam is recorded for review."><i></i><span class="t">Mic on</span></span>
         <span class="xb rec" id="xbRec" title="Speech was heard — a short clip is being recorded for the Academic Head"><b></b>REC</span>
-        <span class="xb eye" id="xbEye" title="The Academic Head is watching your camera live">👁<span class="t">Being watched</span></span></div>
+</div>
       <button class="btn sm ghost rulesbtn" id="rulesB" title="Exam rules (the timer keeps running)">Rules</button>
       <div class="timer" id="tmr">--:--</div>
       <div class="pip" id="pip"><video id="pvid" playsinline muted></video></div>
@@ -664,12 +688,12 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=17').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=18').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
       b.style.display = on ? 'block' : 'none';
-    }, { getSnap: () => cam.snapshot(240, 0.5), onWatch: (n) => $('#xbEye')?.classList.toggle('on', n > 0) });
+    }, { getSnap: () => cam.snapshot(240, 0.5) });
     X.cleanup.push(() => { stop(); $('#talkB')?.remove(); });
   }).catch(() => {});
   $('#rulesB').onclick = () => {
@@ -907,7 +931,7 @@ function startExam(p, course) {
         const q = X.idx + 1;
         api('exam_voice', { p_attempt: p.attempt_id, p_q: q, p_path: null, p_kind: 'voice', p_secs: null, p_bytes: null, p_level: info.level }).catch(() => {});
         if (nClips < maxClips && cl?.fire({ q })) { nClips++; try { localStorage.setItem(vKey, String(nClips)); } catch {} }
-        toast('🎙 Voice heard — please stay silent. A short clip is recorded for the Academic Head to review.', 'bad');
+        toast('🎙 Voice heard — please stay silent. A short clip is recorded for the academic team to review.', 'bad');
       },
     });
   };
@@ -1124,7 +1148,7 @@ boot();
 
 // ---------------------------------------------------------------- specialisation + practical papers
 const LVL3 = { easy: ['Basic', 'B+'], medium: ['Standard', 'A'], hard: ['Advanced', 'A+'] };
-const hrs = (m) => (m >= 1440 ? `${Math.round(m / 1440)} days` : `${Math.round((m / 60) * 10) / 10} h`);
+const hrs = (m) => (m > 4320 ? `${Math.round(m / 1440)} days` : m >= 60 ? `${Math.round((m / 60) * 10) / 10} hours` : `${m} min`);
 function specBlock(c, pr) {
   if (!pr.specs?.length) return '';
   if (pr.spec) return `<div class="card spec-chosen mt16"><div class="spread"><div><div class="small muted">Your specialisation</div><h3>${esc(pr.spec.name)}</h3></div>
@@ -1151,7 +1175,9 @@ function pracBlock(c, pr) {
   const mods = [...new Set(pr.papers.map(key))];
   const allSW = pr.papers.every(isSW);
   return `<h2 class="sech">Practical papers</h2>
-    <p class="small muted" style="margin:-4px 0 12px">150 marks each. ${allSW ? 'One practical per software — it unlocks once you pass that software\'s theory exam. The timer starts the moment you open a paper.' : 'The timer starts the moment you open a paper — you get the question paper and the asset pack together.'}</p>
+    <div class="pracinfo"><div><b>🔓 When it opens</b><span>${allSW ? 'Each software practical opens after you pass that software\'s theory exam.' : 'A module\'s practical paper opens after you pass <b>all the theory exams of that module</b> (shown on each paper).'} The academic team then releases it and you get an email.</span></div>
+      <div><b>⏱ How the time works</b><span>The clock starts when <b>you</b> press Start — pick a day that suits you (a weekend works well). From then you have <b>${hrs(pr.papers[0]?.window_min || 2880)} to upload</b>. The work itself takes about ${hrs(pr.papers[0]?.work_min || 360)} — split it across breaks, office hours and renders as you like.</span></div>
+      <div><b>📦 What you get</b><span>The question paper and its asset pack together, 150 marks each. Upload source files, outputs and a 60-second walkthrough as one Google Drive link.</span></div></div>
     ${mods.map((m) => `<div class="modrow"><div class="modlab">${m === 'sw' ? 'Software' : 'Module ' + m}</div><div class="grid subjects">${pr.papers.filter((p) => key(p) === m).map((p) => pracCard(p)).join('')}</div></div>`).join('')}`;
 }
 function pracCard(p) {
@@ -1177,7 +1203,7 @@ function pracCard(p) {
     ${pIcon(p)}
     <div class="body"><div class="seq">${pLabel(p).toUpperCase()}</div><div class="spread"><h4>${esc(p.title)}</h4>${best}</div>
       ${(p.reqs || []).length && !isSW(p) ? `<div class="swmix">${p.reqs.map((x) => { const c = SW[x.id] || ['#8a8f99', '#3b3f47']; return `<i style="--c1:${c[0]};--c2:${c[1]}" title="${esc(x.name)}${x.any ? ' (any one)' : ''}">${esc(x.short || x.id)}</i>`; }).join('')}</div>` : ''}
-      <div class="tiny dim">${p.marks} marks · ${hrs(p.work_min)} of work · ${hrs(p.window_min)} to submit</div>
+      <div class="tiny dim">${p.marks} marks · about ${hrs(p.work_min)} of work · upload within ${hrs(p.window_min)} of pressing Start</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 12px">${status}</div>${action}</div></div>`;
 }
 function bindPrac(c, pr) {
@@ -1191,8 +1217,8 @@ function pracStartModal(c, p) {
     <div class="grid levels">${['easy', 'medium', 'hard'].map((k) => `<button class="lvl ${k === level ? 'on' : ''}" data-lvl="${k}"><h3>${LVL3[k][0]}</h3>
       <div class="cap">${LVL3[k][1]}</div><div class="tiny muted">highest grade</div></button>`).join('')}</div>
     <div class="rules mt16">${[
-      ['clock', 'The timer starts as soon as I click Start', `Work time is about ${hrs(p.work_min)}. I must submit by <b>${ends.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit' })}</b> (${hrs(p.window_min)} including breaks, renders and upload).`],
-      ['wip', 'I will upload work-in-progress screenshots when asked', 'At the 2-hour and 4-hour marks. Missing check-ins are flagged to the examiner.'],
+      ['clock', 'The clock starts as soon as I click Start', `The work takes about ${hrs(p.work_min)}, at my own pace. I must upload by <b>${fmtDT(ends)}</b> — that is ${hrs(p.window_min)} from now, including breaks, sleep, renders and upload. If I don't have that time today, I press “Not now” and start on a better day.`],
+      ['wip', 'I will upload work-in-progress screenshots while I work', 'Two quick screenshots of my progress (the paper page reminds me). Missing check-ins are flagged to the examiner.'],
       ['own', 'The work is entirely my own', 'Only the assets in the pack and my own work. AI tools only where the paper allows it — always declared.'],
       ['files', 'I will submit source files, outputs and a 60-second walkthrough', 'One Google Drive folder shared as "Anyone with the link can view", plus a short screen recording walking through my file.'],
     ].map((r) => `<label class="rule"><input type="checkbox"><div class="box"></div><div><b>${r[1]}</b><span>${r[2]}</span></div></label>`).join('')}</div>
@@ -1242,7 +1268,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=17'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=18'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

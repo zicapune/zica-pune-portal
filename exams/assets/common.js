@@ -86,7 +86,7 @@ export const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).sli
 
 const dOpt = { timeZone: CFG.tz };
 export const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { ...dOpt, weekday: 'short', day: 'numeric', month: 'short' });
-export const fmtTime = (d) => new Date(d).toLocaleTimeString('en-IN', { ...dOpt, hour: 'numeric', minute: '2-digit' });
+export const fmtTime = (d) => new Date(d).toLocaleTimeString('en-IN', { ...dOpt, hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s*(am|pm)\b/i, (x) => ' ' + x.trim().toUpperCase());
 export const fmtDT = (d) => d ? `${fmtDate(d)}, ${fmtTime(d)}` : '—';
 export const fmtRange = (a, b) => {
   const same = fmtDate(a) === fmtDate(b);

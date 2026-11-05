@@ -1,11 +1,18 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=17';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=18';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
 const S = { tab: 'dash', course: '', scope: 'active', q: '', sel: new Set() };
 const LV = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+// clean line icons (stroke = text colour)
+const svg = (d, w = 18) => `<svg class="ico" width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const IC = {
+  group: svg('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.6 14.2c2.6-.4 4.6 1.2 5 4.3"/>'),
+  cal: svg('<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17M12 13v5M9.5 15.5h5"/>'),
+  users: svg('<path d="M4 20v-1a6 6 0 0 1 12 0v1"/><circle cx="10" cy="8" r="4"/><path d="M18 11l1.6 1.6L22 10"/>'),
+};
 
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
@@ -55,7 +62,7 @@ const subjShort = (id) => META.subjects.find((s) => s.id === id)?.short || id;
 function setExamModal(R, sid, after) {
   const s = R.student, subs = R.subjects.filter((x) => !x.done_external);
   const local = (d) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 16);
-  const m = modal(`<h2>📅 Set exam · ${esc(s.name)}</h2>
+  const m = modal(`<h2 class="row" style="gap:10px">${IC.cal} Set exam · ${esc(s.name)}</h2>
     <label class="lb">Subject</label><select class="inp" id="sxS">${subs.map((x) => `<option value="${x.id}" ${x.id === sid ? 'selected' : ''}>${esc(x.name)} — ${esc(ST_LBL[x.state] || x.state)} · used ${x.used}/${x.max_attempts}</option>`).join('')}</select>
     <label class="lb">When</label>
     <label class="row small" style="gap:8px"><input type="radio" name="sxW" value="now" checked> Open now</label>
@@ -82,7 +89,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="lwall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
-  let mod; try { mod = await import('./live.js?v=17'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=18'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -204,18 +211,18 @@ async function dash() {
     const off = Date.parse(ME.server_now) - Date.now();
     frame(`
       <div class="phead spread"><div><h1>Exam control room</h1><div class="small muted">Auto-refreshes every 15 seconds · ${fmtDT(ME.server_now)}</div></div>
-        <div class="row"><button class="btn pri" id="grpX">👥 Group exam</button><a class="btn" href="#/slots">+ Slot</a><a class="btn" href="#/students">Students & unlocks</a></div></div>
+        <div class="row"><button class="btn pri" id="grpX">${IC.group} Group exam</button><a class="btn" href="#/slots">${IC.cal} Slot</a><a class="btn" href="#/students">${IC.users} Students & unlocks</a></div></div>
       <div class="grid kpi">
         <div><b>${c.students}</b><small>Students on portal</small></div>
-        <div><b>${c.active}</b><small>Active (in progress / on hold)</small></div>
+        <div><b>${c.active}</b><small>Active students</small><i>in progress · on hold</i></div>
         <div><b>${c.logged_in}</b><small>Have logged in</small></div>
-        <div class="${c.live ? 'hot' : ''}"><b>${c.live}</b><small>Live exams now${c.paused ? ` · ${c.paused} paused` : ''}</small></div>
+        <a href="#/wall" class="${c.live ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${c.live}</b><small>Live exams now</small>${c.paused ? `<i>${c.paused} paused</i>` : '<i>open camera wall ›</i>'}</a>
         <div><b>${c.done_today}</b><small>Finished today</small></div>
-        <div><b>${c.done ? Math.round((c.passed / c.done) * 100) : 0}%</b><small>Pass rate (${c.passed}/${c.done})</small></div>
-        <a href="#/requests" class="${c.requests + c.claims ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${c.requests + c.claims}</b><small>Requests waiting${c.claims ? ` · ${c.claims} account links` : ''}</small></a>
+        <div><b>${c.done ? Math.round((c.passed / c.done) * 100) : 0}%</b><small>Pass rate</small><i>${c.passed} of ${c.done} exams · test student excluded</i></div>
+        <a href="#/requests" class="${c.requests + c.claims ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${c.requests + c.claims}</b><small>Requests waiting</small>${c.claims ? `<i>${c.claims} account links</i>` : ''}</a>
         <a href="#/subs" style="text-decoration:none;color:inherit"><b>${c.submissions}</b><small>Assignments to review</small></a>
         <div><b>${c.today}</b><small>Exam slots today</small></div>
-        <a href="#/prac" class="${PC.submitted ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${PC.submitted || 0}</b><small>Practicals to mark${PC.in_progress ? ` · ${PC.in_progress} in progress` : ''}</small></a>
+        <a href="#/prac" class="${PC.submitted ? 'hot' : ''}" style="text-decoration:none;color:inherit"><b>${PC.submitted || 0}</b><small>Practicals to mark</small>${PC.in_progress ? `<i>${PC.in_progress} in progress</i>` : ''}</a>
       </div>
       ${ME.upcoming?.length ? `<div class="card mt24"><div class="spread"><h3>Next 48 hours</h3><a class="small" href="#/slots">All slots ›</a></div>
         <div class="tscroll mt16" style="max-height:320px"><table class="tbl"><tr><th>When</th><th>Subject</th><th>Students</th></tr>
@@ -398,6 +405,7 @@ async function students() {
   load();
 }
 const shortStatus = (s) => String(s || '—').replace('Completed', 'Done').replace("Don't Need Job", 'No job').slice(0, 26);
+const asgTxt = (c) => { const [ap, sub] = String(c.as || '0/0').split('/').map((x) => +x || 0); return `${sub} of ${c.ar} submitted · ${ap} of ${c.ar} approved`; };
 function cellHtml(s, sj) {
   const c = s.cells[sj.id];
   if (!c) return `<td class="cell"><button class="cb" data-cell="${s.id}" data-sub="${sj.id}" title="Not unlocked">·</button></td>`;
@@ -411,7 +419,7 @@ function cellHtml(s, sj) {
   if (c.ov === true) cls += ' ova'; else if (c.ov === false) cls += ' ovb';
   const tip = (c.best ? `${c.best.sc}/${c.best.mx} · ${c.best.lv} · ${c.n}/${c.ma} attempts` : `${c.u ? 'unlocked' : 'locked'} (${c.src || '—'}) · ${c.n}/${c.ma} attempts${c.ll ? ' · level ' + c.ll : ''}`)
     + (c.ext ? ' · done earlier' : '') + (c.ov === true ? ' · override: allow' : c.ov === false ? ' · override: block' : '')
-    + (c.ar ? ` · assignments ${c.as} of ${c.ar}` : '') + (c.tk ? ' · ticked in Summary' : '') + (c.bk ? ' · date requested' : '');
+    + (c.ar ? ` · assignments ${asgTxt(c)}` : '') + (c.tk ? ' · ticked in Summary' : '') + (c.bk ? ' · date requested' : '');
   return `<td class="cell"><button class="${cls}" data-cell="${s.id}" data-sub="${sj.id}" title="${esc(tip)}">${esc(txt)}</button></td>`;
 }
 function cellModal(s, sid, after) {
@@ -419,6 +427,8 @@ function cellModal(s, sid, after) {
   const m = modal(`<div class="small muted">${esc(s.name)}</div><h2>${esc(subjName(sid))}</h2>
     <div class="row" style="gap:6px;flex-wrap:wrap">${c.best ? `<span class="pill ${c.best.p ? 'ok' : 'bad'}">Best ${esc(c.best.g)} · ${c.best.sc}/${c.best.mx} · ${c.best.lv}</span>` : ''}
       <span class="pill">${c.n} of ${c.ma} attempts used</span>${c.src ? `<span class="pill">source: ${esc(c.src)}</span>` : ''}</div>
+    ${c.ar ? `<div class="asgline mt16"><b>Assignments</b><span>${asgTxt(c)}</span><div class="prog"><i style="width:${Math.round(((+String(c.as || '0/0').split('/')[1] || 0) / c.ar) * 100)}%"></i></div></div>` : ''}
+    ${c.live ? '' : `<div class="setnow mt16"><div><b>${IC.cal} Schedule this exam</b><span>Open it now, or pick a date and time — ${esc(s.name.split(' ')[0])} gets an email.</span></div><button class="btn pri" data-setx>Set exam</button></div>`}
     <label class="lb">Exam access</label>
     <div class="row"><button class="btn ${c.u ? 'ok' : ''}" data-u="1">Unlocked</button><button class="btn ${!c.u ? 'bad' : ''}" data-u="0">Locked</button></div>
     <div class="two"><div><label class="lb">Level</label><select class="inp" id="ll"><option value="">Student chooses</option>
@@ -429,13 +439,16 @@ function cellModal(s, sid, after) {
         <option value="allow" ${c.ov === true ? 'selected' : ''}>Allow — skip order & assignment checks</option>
         <option value="block" ${c.ov === false ? 'selected' : ''}>Block — on hold</option></select></div>
       <div><label class="lb">Completed earlier (no exam needed)</label><label class="row small" style="height:46px"><input type="checkbox" id="ex" ${c.ext ? 'checked' : ''}> Mark this software as done</label></div></div>
-    ${c.ar ? `<div class="small muted mt8">Assignments approved ${esc(c.as)} of ${c.ar}</div>` : ''}
     <div class="row mt24" style="justify-content:space-between;flex-wrap:wrap">${c.best ? `<button class="btn ghost" data-rep="${c.best.id}">View report</button>` : '<span></span>'}
       <div class="row"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Save</button></div></div>`);
   let u = !!c.u;
   $$('[data-u]', m.el).forEach((b) => (b.onclick = () => { u = b.dataset.u === '1'; $$('[data-u]', m.el).forEach((x) => (x.className = 'btn ' + (x.dataset.u === '1' ? (u ? 'ok' : '') : (!u ? 'bad' : '')))); }));
   m.el.querySelector('[data-x]').onclick = m.close;
   m.el.querySelector('[data-rep]')?.addEventListener('click', () => { m.close(); reportModal(c.best.id); });
+  m.el.querySelector('[data-setx]')?.addEventListener('click', () => { m.close();
+    const subs = Object.entries(s.cells || {}).map(([id, x]) => ({ id, name: subjName(id), state: x.live ? 'live' : x.best ? (x.best.p ? 'done' : 'book') : x.u ? 'ready' : 'locked', used: x.n || 0, max_attempts: x.ma || 2, done_external: !!x.ext }));
+    if (!subs.some((x) => x.id === sid)) subs.unshift({ id: sid, name: subjName(sid), state: 'locked', used: c.n || 0, max_attempts: c.ma || 2 });
+    setExamModal({ student: s, subjects: subs }, sid, after); });
   m.el.querySelector('[data-ok]').onclick = () => { m.close();
     run(() => rpc('exam_admin_set_unlock', { p_students: [s.id], p_subjects: [sid], p: { unlocked: u, level_lock: $('#ll', m.el).value, max_attempts: +$('#ma', m.el).value || 2,
       override: $('#ov', m.el).value, done_external: $('#ex', m.el).checked, ...($('#ex', m.el).checked && !c.ext ? { ext_note: 'Completed earlier' } : {}) } }), 'Saved', after); };
@@ -510,7 +523,7 @@ async function studentDrawer(id, after) {
 
       <div class="sec"><h4>Subjects</h4><div class="tscroll" style="max-height:none"><table class="tbl"><tr><th>Subject</th><th>State</th><th>Access</th><th>Level</th><th>Attempts</th><th>Eligibility</th></tr>
         ${R.subjects.map((x) => `<tr><td><b>${esc(x.name)}</b>${x.ticked ? ' <span class="tiny dim" title="Ticked in Summary">✓S</span>' : ''}
-            ${x.assign?.req ? `<div class="tiny dim">assignments ${x.assign.approved}/${x.assign.req}</div>` : ''}</td>
+            ${x.assign?.req ? `<div class="tiny dim">assignments: ${x.assign.submitted || 0} of ${x.assign.req} submitted · ${x.assign.approved || 0} approved</div>` : ''}</td>
           <td><span class="pill ${stCls(x.state)}" title="${esc(x.seq_block ? 'after ' + x.seq_block : '')}">${esc(ST_LBL[x.state] || x.state)}</span></td>
           <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ${x.unlocked ? 'ok' : ''}" data-tog="${x.id}" data-v="${x.unlocked ? 0 : 1}">${x.unlocked ? 'Unlocked' : '🔒 Locked'}</button><button class="btn sm" data-setx="${x.id}" title="Set this exam now or at a time">📅</button></div></td>
           <td><select class="inp" style="padding:6px 8px" data-lvl="${x.id}"><option value="">Student chooses</option>${['easy', 'medium', 'hard'].map((l) => `<option value="${l}" ${x.level_lock === l ? 'selected' : ''}>${LV[l]}</option>`).join('')}</select></td>
@@ -610,7 +623,7 @@ function studentForm(R, after) {
 // ================================================================= slots
 async function slots() {
   frame(`<div class="phead spread"><div><h1>Exam slots</h1><div class="small muted">A slot is a time window. Students in it can start any unlocked exam (or one subject) anytime inside the window. Max 20 live at once.</div></div>
-    <div class="row"><button class="btn pri" id="grpSlot">👥 Group exam for one software</button><button class="btn" id="newSlot">+ Custom slot</button></div></div><div id="sl"><div class="spin"></div></div>`);
+    <div class="row"><button class="btn pri" id="grpSlot">${IC.group} Group exam for one software</button><button class="btn" id="newSlot">+ Custom slot</button></div></div><div id="sl"><div class="spin"></div></div>`);
   $('#newSlot').onclick = () => slotForm({}, slots);
   $('#grpSlot').onclick = () => groupExam(slots);
   let L; try { L = await rpc('exam_admin_slots'); } catch (e) { return toast(errText(e), 'bad'); }
@@ -1003,7 +1016,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=17');
+        const { practicalPDF } = await import('./pdf.js?v=18');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -1051,7 +1064,7 @@ async function heldCard() {
 // ================================================================= group exam: one software, many students, one click
 async function groupExam(after, pre) {
   const subs = META.subjects.filter((x) => ((x.bank?.E || 0) + (x.bank?.M || 0) + (x.bank?.H || 0)) >= 50);
-  const m = modal(`<h2>👥 Group exam</h2><p class="small muted" style="margin-top:4px">Pick a software — everyone who can take it right now is listed (date requests first). Choose a window and send. Their pending date requests are closed automatically.</p>
+  const m = modal(`<h2 class="row" style="gap:10px">${IC.group} Group exam</h2><p class="small muted" style="margin-top:4px">Pick a software — everyone who can take it right now is listed (date requests first). Choose a window and send. Their pending date requests are closed automatically.</p>
     <label class="lb">Software</label><select class="inp" id="gs"><option value="">Choose…</option>${subs.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
     <div class="three"><div><label class="lb">Date</label><input class="inp" type="date" id="gd" value="${istLocal(new Date(Date.now() + 864e5).toISOString(), 'date')}"></div>
       <div><label class="lb">From</label><input class="inp" type="time" id="ga" value="10:00"></div><div><label class="lb">To</label><input class="inp" type="time" id="gb" value="18:00"></div></div>
