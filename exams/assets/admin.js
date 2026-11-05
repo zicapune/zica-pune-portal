@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=18';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=19';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -30,14 +30,23 @@ async function boot() {
   window.addEventListener('hashchange', route);
   route();
 }
-function bindTop() { $$('[data-signout]').forEach((b) => (b.onclick = signOut)); }
+function bindTop() {
+  $$('[data-signout]').forEach((b) => (b.onclick = signOut));
+  $$('.tourbtn').forEach((b) => (b.onclick = () => runTour(true)));
+}
+async function runTour(force) {
+  const T = await import('./tour.js?v=19');
+  const key = 'adm_' + (ME?.me || ''), steps = META?.is_admin ? T.ADMIN_TOUR : T.STAFF_TOUR;
+  if (META?.is_admin && force && S.tab !== 'dash') { location.hash = '#/dash'; setTimeout(() => T.startTour(key, steps, { force }), 1400); return; }
+  T.startTour(key, steps, { force });
+}
 
-const ADMIN_TABS = [['dash', 'Dashboard'], ['wall', 'Live cameras'], ['requests', 'Requests'], ['approve', 'Approvals'], ['students', 'Students'], ['slots', 'Slots'], ['prac', 'Practicals'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['settings', 'Settings']];
+const ADMIN_TABS = [['dash', 'Dashboard'], ['wall', 'Live cameras'], ['requests', 'Requests'], ['approve', 'Approvals'], ['students', 'Students'], ['slots', 'Slots'], ['prac', 'Practicals'], ['subs', 'Assignments'], ['banks', 'Question banks'], ['reports', 'Reports'], ['settings', 'Settings']];
 const STAFF_TABS = [['prac', 'Practical marking'], ['subs', 'Assignment reviews']];
 const tabs = () => (META?.is_admin ? ADMIN_TABS : STAFF_TABS);
 function frame(inner) {
   const c = ME?.counts || {}, live = c.live || 0, req = (c.requests || 0) + (c.claims || 0), sub = c.submissions || 0;
-  root.innerHTML = topBar({ email: ME.me, name: ME.me }, META.is_admin ? `<a class="btn sm ghost" href="./" target="_blank">Student view ↗</a>` : '<span class="pill">Faculty</span>') +
+  root.innerHTML = topBar({ email: ME.me, name: ME.me }, `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around">${svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/>', 16)} Tour</button>` + (META.is_admin ? `<a class="btn sm ghost" href="./" target="_blank">Student view ↗</a>` : '<span class="pill">Faculty</span>')) +
     `<nav class="anav"><div class="wrap">${tabs().map(([k, t]) => `<a href="#/${k}" class="${S.tab === k ? 'on' : ''}">${t}${
       k === 'dash' && live ? `<span class="pill bad">${live} live</span>` : k === 'requests' && req ? `<span class="pill warn">${req}</span>` : k === 'subs' && sub ? `<span class="pill info">${sub}</span>` : ''}</a>`).join('')}</div></nav>
     <main class="wrap" id="pg">${inner}</main><div class="foot">ZICA Pune Portal · ${META.is_admin ? 'Exam admin' : 'Faculty'}</div>`;
@@ -53,7 +62,7 @@ function route() {
   if (p[0] === 'prac' && p[1] === 'papers') return pracPapers();
   if (p[0] === 'prac' && p[1]) return pracMark(p[1]);
   if (S.tab !== 'wall' && LIVE) { LIVE.stop(); LIVE = null; }
-  ({ dash, wall, requests, approve, students, slots, prac, subs, banks, settings })[S.tab]();
+  ({ dash, wall, requests, approve, students, slots, prac, subs, banks, reports, settings })[S.tab]();
 }
 const subjName = (id) => META.subjects.find((s) => s.id === id)?.name || id;
 const subjShort = (id) => META.subjects.find((s) => s.id === id)?.short || id;
@@ -77,7 +86,8 @@ function setExamModal(R, sid, after) {
     const at = m.el.querySelector('input[name=sxW]:checked').value === 'at' ? new Date($('#sxT', m.el).value + ':00+05:30') : null;
     if (at && !(at > new Date())) return toast('Pick a future time.', 'bad');
     const p = { p_student: s.id, p_subject: $('#sxS', m.el).value, p_at: at ? at.toISOString() : null, p_window: +$('#sxM', m.el).value || 120, p_extra: $('#sxX', m.el).checked, p_note: $('#sxN', m.el).value.trim() || null };
-    m.close(); run(() => rpc('exam_admin_set_exam', p), at ? `Exam set for ${fmtDT(at)} — student emailed` : 'Exam open now — student emailed', after);
+    m.close(); run(async () => { const r = await rpc('exam_admin_set_exam', p); if (r?.slot) waForSlots([r.slot], { title: 'Message for the student / group' }); return r; },
+      at ? `Exam set for ${fmtDT(at)} — student emailed` : 'Exam open now — student emailed', after);
   };
 }
 
@@ -89,7 +99,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="lwall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
-  let mod; try { mod = await import('./live.js?v=18'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=19'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -250,6 +260,7 @@ async function dash() {
     $$('[data-act]').forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, draw)));
     $('#grpX').onclick = () => groupExam(draw);
     heldCard(); planCard(draw);
+    if (!S.toured) { S.toured = true; setTimeout(() => { if (!$('.ov') && !$('.drawer')) runTour(false); }, 1000); }
   };
   await draw();
   timer = setInterval(() => { if (!$('.ov') && !$('.drawer') && S.tab === 'dash') draw(); }, 15000);
@@ -693,7 +704,7 @@ async function slotForm(pre = {}, after) {
     const p = { id: pre.id || '', title: $('#t', m.el).value, starts_at: toISO(d, $('#a', m.el).value), ends_at: toISO(d, $('#b', m.el).value),
       capacity: +$('#cap', m.el).value || 20, subject_id: $('#sj', m.el).value, notes: $('#nts', m.el).value, members: [...sel], notify: $('#nt', m.el).checked };
     if (!sel.size && !(await confirmBox('No students selected', 'Save an empty slot anyway?', 'Save'))) return;
-    try { const r = await rpc('exam_admin_slot_save', { p }); m.close(); toast(`Slot saved for ${sel.size} student(s)`, 'ok'); after && after(r); } catch (e) { toast(errText(e), 'bad'); }
+    try { const r = await rpc('exam_admin_slot_save', { p }); m.close(); toast(`Slot saved for ${sel.size} student(s)`, 'ok'); if (r?.id && sel.size) waForSlots([r.id]); after && after(r); } catch (e) { toast(errText(e), 'bad'); }
   };
 }
 
@@ -749,13 +760,14 @@ async function requests() {
   $('#bapp') && ($('#bapp').onclick = async () => {
     if (!sel.size) return toast('Tick the requests to approve first.', 'bad');
     if (!(await confirmBox(`Approve ${sel.size} request(s)?`, 'Each student gets a 2-hour slot at the time they asked for, and an email.', 'Approve'))) return;
-    run(async () => { await skipFor([...sel]); return rpc('exam_admin_booking_decide', { p_ids: [...sel], p_action: 'approve' }); }, `Approved ${sel.size}`, requests);
+    const ids = [...sel];
+    run(async () => { await skipFor(ids); const r = await rpc('exam_admin_booking_decide', { p_ids: ids, p_action: 'approve' }); waForBookings(ids); return r; }, `Approved ${sel.size}`, requests);
   });
   $$('[data-ap]').forEach((b) => (b.onclick = () => {
     const id = b.dataset.ap, d = $(`[data-dd="${id}"]`).value, t = $(`[data-dt="${id}"]`).value;
     if (!d || !t) return toast('Pick a date and time.', 'bad');
     run(async () => { await skipFor([+id]); return rpc('exam_admin_booking_decide', { p_ids: [+id], p_action: 'approve', p_at: toISO(d, t), p_subject: $(`[data-dsj="${id}"]`)?.value || null,
-      p_note: $(`[data-dn="${id}"]`).value.trim() || null }); }, 'Approved — student will be emailed', requests);
+      p_note: $(`[data-dn="${id}"]`).value.trim() || null }).then((r) => { waForBookings([+id]); return r; }); }, 'Approved — student will be emailed', requests);
   }));
   async function skipFor(ids) {
     for (const id of ids) {
@@ -790,13 +802,15 @@ async function subs() {
   await counts();
   const mine = META.my_subjects; // null = all
   const subjOpts = META.subjects.filter((x) => !mine || mine.includes(x.id));
-  frame(`<div class="phead"><h1>${META.is_admin ? 'Assignment submissions' : 'Assignment reviews'}</h1>
+  frame(`<div class="phead spread"><div><h1>${META.is_admin ? 'Assignment submissions' : 'Assignment reviews'}</h1>
       <div class="small muted">Open the Drive link, check the work, then approve or ask for a redo. ${META.is_admin ? '' : 'You see the subjects assigned to you.'}</div></div>
+      ${META.is_admin ? '<button class="btn" data-dlb="subs">⬇ Submissions & progress (Excel)</button>' : ''}</div>
     <div class="toolbar"><select class="inp" id="fst">${[['submitted', 'Waiting for review'], ['redo', 'Redo requested'], ['approved', 'Approved'], ['all', 'All']].map(([v, t]) => `<option value="${v}" ${S.sst === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select class="inp" id="fsj"><option value="">All my subjects</option>${subjOpts.map((x) => `<option value="${x.id}" ${S.ssj === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
       <input class="inp" id="fsq" placeholder="Search student" style="flex:1" value="${esc(S.sq || '')}"></div>
     <div id="sb"><div class="spin"></div></div>`);
-  S.sst = S.sst || 'submitted';
+  S.sst = S.sst || 'submitted'; bindDl();
+  if (!META.is_admin && !S.toured) { S.toured = true; setTimeout(() => runTour(false), 1000); }
   $('#fst').onchange = (e) => { S.sst = e.target.value; subs(); };
   $('#fsj').onchange = (e) => { S.ssj = e.target.value; subs(); };
   let L; try { L = await rpc('exam_admin_submissions', { p_status: S.sst, p_subject: S.ssj || null }); } catch (e) { return toast(errText(e), 'bad'); }
@@ -842,12 +856,18 @@ async function banks() {
   META = await rpc('exam_admin_meta').catch(() => META);
   const L = META.settings.levels;
   const need = { E: Math.max(L.easy.E, L.medium.E, L.hard.E), M: Math.max(L.easy.M, L.medium.M, L.hard.M), H: Math.max(L.easy.H, L.medium.H, L.hard.H) };
-  frame(`<div class="phead"><h1>Question banks</h1><div class="small muted">A paper is ready when it has at least ${need.E} easy, ${need.M} medium and ${need.H} hard questions. Double that lets retakes get fresh questions.</div></div>
+  frame(`<div class="phead spread"><div><h1>Question banks</h1><div class="small muted">A paper is ready when it has at least ${need.E} easy, ${need.M} medium and ${need.H} hard questions. Double that lets retakes get fresh questions.</div></div>
+      <div class="row" style="gap:8px"><button class="btn" data-dlb="bank">⬇ Theory banks (Excel)</button><button class="btn" data-dlb="prac">⬇ Practical papers (Excel)</button></div></div>
     <div class="tscroll"><table class="tbl"><tr><th>Subject</th><th>Easy</th><th>Medium</th><th>Hard</th><th>Total</th><th>Status</th><th>Assignments</th></tr>
     ${META.subjects.map((s) => { const b = s.bank, t = b.E + b.M + b.H; const ready = b.E >= need.E && b.M >= need.M && b.H >= need.H;
       return `<tr><td><b>${esc(s.name)}</b></td><td>${b.E}</td><td>${b.M}</td><td>${b.H}</td><td><b>${t}</b></td>
       <td>${ready ? `<span class="pill ok">Ready${b.E >= need.E * 2 && b.M >= need.M * 2 && b.H >= need.H * 2 ? ' · retake-safe' : ''}</span>` : t ? '<span class="pill warn">Partial</span>' : '<span class="pill">Not started</span>'}</td>
       <td>${s.assignments || '<span class="dim">—</span>'}</td></tr>`; }).join('')}</table></div>`);
+  bindDl();
+}
+function bindDl() {
+  $$('[data-dlb]').forEach((b) => (b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Preparing…';
+    try { await doDownload(b.dataset.dlb, null); toast('Downloaded', 'ok'); } catch (e) { toast(errText(e), 'bad'); } b.disabled = false; b.textContent = t; }));
 }
 
 async function settings() {
@@ -926,6 +946,7 @@ async function prac() {
     <a class="btn" href="#/prac/papers">📦 Papers & asset packs</a></div>
     <div class="toolbar"><select class="inp" id="pst">${[['submitted', 'Waiting for marks'], ['in_progress', 'In progress now'], ['marked', 'Marked'], ['all', 'All']].map(([v, t]) => `<option value="${v}" ${S.pst === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input class="inp" id="pq" placeholder="Search student" style="flex:1" value="${esc(S.pq || '')}"></div><div id="pl"><div class="spin"></div></div>`);
+  if (!META.is_admin && !S.toured) { S.toured = true; setTimeout(() => runTour(false), 1000); }
   $('#pst').onchange = (e) => { S.pst = e.target.value; prac(); };
   let L; try { L = await rpc('exam_admin_prac_list', { p_status: S.pst }); } catch (e) { return toast(errText(e), 'bad'); }
   const draw = () => {
@@ -1016,7 +1037,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=18');
+        const { practicalPDF } = await import('./pdf.js?v=19');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -1104,7 +1125,150 @@ async function groupExam(after, pre) {
     try {
       const r = await rpc('exam_admin_slot_save', { p });
       const c = await rpc('exam_admin_group_close', { p_students: [...sel], p_subject: sj, p_slot: r.id });
-      m.close(); toast(`${name}: ${sel.size} students scheduled and emailed${c.closed ? ` · ${c.closed} requests closed` : ''}`, 'ok'); after && after();
+      m.close(); toast(`${name}: ${sel.size} students scheduled and emailed${c.closed ? ` · ${c.closed} requests closed` : ''}`, 'ok');
+      waForSlots([r.id], { title: `${name} · group message` }); after && after();
     } catch (e) { toast(errText(e), 'bad'); cnt(); }
   };
+}
+
+// ================================================================= Reports · schedule PDF + WhatsApp · notice-board results · downloads
+const dIn = (days) => istLocal(new Date(Date.now() + days * 864e5).toISOString(), 'date');
+const docs = () => import('./docs.js?v=19');
+const waMod = () => import('./wa.js?v=19');
+// after anything is scheduled: WhatsApp draft for those slot(s)
+async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
+  try {
+    const all = await rpc('exam_admin_schedule', { p_from: new Date(Date.now() - 864e5).toISOString(), p_to: new Date(Date.now() + 400 * 864e5).toISOString() });
+    const items = all.filter((x) => ids.map(String).includes(String(x.id)));
+    if (!items.length) return;
+    const W = await waMod();
+    W.waPanel(W.scheduleText(items), { title, hint: 'Ready for your class group' });
+  } catch (e) { console.warn(e); }
+}
+
+async function waForBookings(ids) { try { const sl = await rpc('exam_admin_booking_slots', { p_ids: ids.map(Number) }); if (sl.length) waForSlots(sl, { title: 'Approved dates · message' }); } catch {} }
+async function reports() {
+  frame(`<div class="phead spread"><div><h1>Reports & downloads</h1><div class="small muted">A4 PDFs in the ZICA print style, WhatsApp drafts for your groups, and Excel downloads.</div></div></div>
+    <div class="rgrid">
+      <section class="card rcard" id="rS"><div class="rhead"><span class="rico">${IC.cal}</span><div><h3>Exam schedule</h3><div class="small muted">Who writes what, when — for the group and the notice board.</div></div></div>
+        <div class="three mt16"><div><label class="lb">From</label><input class="inp" type="date" id="sF" value="${dIn(0)}"></div><div><label class="lb">To</label><input class="inp" type="date" id="sT" value="${dIn(7)}"></div>
+          <div style="align-self:end"><button class="btn block" id="sL">Show sessions</button></div></div>
+        <div id="sBox" class="mt16"></div></section>
+      <section class="card rcard" id="rR"><div class="rhead"><span class="rico">${svg('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>')}</span><div><h3>Results for the notice board</h3>
+          <div class="small muted">Only results that are ready to publish are ticked — passed, best attempt, all assignments submitted.</div></div></div>
+        <div class="four mt16"><div><label class="lb">Exams from</label><input class="inp" type="date" id="rF" value="${dIn(-30)}"></div><div><label class="lb">To</label><input class="inp" type="date" id="rT" value="${dIn(0)}"></div>
+          <div><label class="lb">Software</label><select class="inp" id="rSj"><option value="">All software</option>${META.subjects.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+          <div style="align-self:end"><button class="btn block" id="rL">Show results</button></div></div>
+        <div id="rBox" class="mt16"></div></section>
+      <section class="card rcard" id="rD"><div class="rhead"><span class="rico">${svg('<path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>')}</span><div><h3>Downloads (Excel)</h3><div class="small muted">Opens in Excel or Google Sheets. Test student left out.</div></div></div>
+        <div class="two mt16"><div><label class="lb">Course (optional)</label><select class="inp" id="dC"><option value="">All courses</option>${(ME.courses || []).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div><div></div></div>
+        <div class="dlgrid mt16">
+          <button class="dl" data-xl="marks"><b>Marks register</b><span>Every finished exam · score, grade, level, attempt no., warnings, voice flags</span></button>
+          <button class="dl" data-xl="subs"><b>Assignment submissions</b><span>Every submission with link & review + a per-student progress sheet</span></button>
+          <button class="dl" data-xl="bank"><b>Theory question banks</b><span>All MCQs with options, answer, difficulty & concept — one sheet per software</span></button>
+          <button class="dl" data-xl="prac"><b>Practical papers</b><span>Every module paper and its question options, marks and asset links</span></button>
+        </div></section>
+    </div>`);
+  // ---- schedule
+  const loadS = async () => {
+    const box = $('#sBox'); box.innerHTML = '<div class="spin"></div>';
+    let L; try { L = await rpc('exam_admin_schedule', { p_from: toISO($('#sF').value, '00:00'), p_to: toISO($('#sT').value, '23:59') }); } catch (e) { box.innerHTML = ''; return toast(errText(e), 'bad'); }
+    L = L.filter((x) => x.students.some((s) => !s.test));
+    if (!L.length) { box.innerHTML = '<div class="empty">No sessions with students in these dates.</div>'; return; }
+    const subs = [...new Set(L.map((x) => x.subject))];
+    const on = new Set(subs);
+    const draw = () => {
+      const pick = L.filter((x) => on.has(x.subject));
+      box.innerHTML = `<div class="chips">${subs.map((s) => `<button class="chip ${on.has(s) ? 'on' : ''}" data-sj="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+        <div class="tscroll mt16"><table class="tbl"><tr><th>When</th><th>Software</th><th>Students</th></tr>${pick.map((x) => `<tr><td style="white-space:nowrap">${fmtRange(x.starts_at, x.ends_at)}</td><td><b>${esc(x.subject)}</b></td>
+          <td class="small">${x.students.filter((s) => !s.test).map((s) => esc(s.name)).join(', ')}</td></tr>`).join('')}</table></div>
+        <div class="row mt16" style="gap:8px;justify-content:flex-end"><button class="btn" id="sW" ${pick.length ? '' : 'disabled'}>WhatsApp message</button><button class="btn pri" id="sP" ${pick.length ? '' : 'disabled'}>A4 schedule PDF</button></div>`;
+      $$('[data-sj]', box).forEach((b) => (b.onclick = () => { on.has(b.dataset.sj) ? on.delete(b.dataset.sj) : on.add(b.dataset.sj); draw(); }));
+      $('#sW').onclick = async () => { const W = await waMod(); W.waPanel(W.scheduleText(pick), { title: 'Exam schedule', hint: `${pick.length} session(s) · ready for your group` }); };
+      $('#sP').onclick = async (e) => { e.target.disabled = true; try { await (await docs()).schedulePDF(pick); } catch (er) { toast(er.message || 'PDF failed', 'bad'); } e.target.disabled = false; };
+    };
+    draw();
+  };
+  $('#sL').onclick = loadS; loadS();
+  // ---- results
+  const loadR = async () => {
+    const box = $('#rBox'); box.innerHTML = '<div class="spin"></div>';
+    let L; try { L = await rpc('exam_admin_results', { p_from: toISO($('#rF').value, '00:00'), p_to: toISO($('#rT').value, '23:59'), p_course: null, p_subject: $('#rSj').value || null }); } catch (e) { box.innerHTML = ''; return toast(errText(e), 'bad'); }
+    if (!L.length) { box.innerHTML = '<div class="empty">No finished exams in these dates.</div>'; return; }
+    const why = (x) => { const a = x.assign || {}, all = !(a.req > 0) || (a.submitted || 0) >= a.req;
+      if (!x.best) return ['', 'A better attempt exists'];
+      if (!x.passed) return ['bad', 'Not passed'];
+      if (!all) return ['warn', `Assignments ${a.submitted || 0} of ${a.req}`];
+      return ['ok', 'Ready to publish']; };
+    const ready = (x) => why(x)[1] === 'Ready to publish';
+    const sel = new Set(L.filter(ready).map((x) => x.attempt_id));
+    let showScore = true;
+    const draw = () => {
+      const n = L.filter(ready).length;
+      box.innerHTML = `<div class="rsum"><span class="pill ok">${n} ready</span><span class="pill warn">${L.filter((x) => why(x)[0] === 'warn').length} waiting for assignments</span><span class="pill bad">${L.filter((x) => why(x)[0] === 'bad').length} not passed</span>
+          <span style="flex:1"></span><button class="btn sm ghost" data-q="ready">Select ready</button><button class="btn sm ghost" data-q="pass">All passed</button><button class="btn sm ghost" data-q="none">None</button></div>
+        <div class="tscroll mt8" style="max-height:440px"><table class="tbl"><tr><th></th><th>Student</th><th>Software</th><th>Grade</th><th>Assignments</th><th>Status</th></tr>
+        ${L.map((x) => { const [c, t] = why(x); const a = x.assign || {}; return `<tr class="${sel.has(x.attempt_id) ? 'picked' : ''}"><td><input type="checkbox" data-r="${x.attempt_id}" ${sel.has(x.attempt_id) ? 'checked' : ''}></td>
+          <td><b>${esc(x.name)}</b><div class="tiny dim">${esc(String(x.code || '').replace(/\.0$/, '') || x.email)}</div></td><td>${esc(x.subject)}<div class="tiny dim">${fmtDate(x.at)} · ${esc(LV[x.level] || x.level)}</div></td>
+          <td><b>${esc(x.grade || '')}</b> <span class="tiny dim">${Math.round(x.percent ?? 0)}%</span></td>
+          <td>${a.req ? `<div class="prog sm"><i style="width:${Math.round(((a.submitted || 0) / a.req) * 100)}%"></i></div><div class="tiny dim">${a.submitted || 0} of ${a.req} submitted</div>` : '<span class="tiny dim">none needed</span>'}</td>
+          <td><span class="pill ${c}">${t}</span></td></tr>`; }).join('')}</table></div>
+        <div class="row mt16" style="gap:10px;justify-content:flex-end;flex-wrap:wrap"><label class="small row" style="gap:6px"><input type="checkbox" id="rSc" ${showScore ? 'checked' : ''}> Show scores</label>
+          <button class="btn" id="rW" ${sel.size ? '' : 'disabled'}>WhatsApp message</button><button class="btn pri" id="rP" ${sel.size ? '' : 'disabled'}>Print A4 results (${sel.size})</button></div>`;
+      $$('[data-r]', box).forEach((c) => (c.onchange = () => { c.checked ? sel.add(c.dataset.r) : sel.delete(c.dataset.r); draw(); }));
+      $$('[data-q]', box).forEach((b) => (b.onclick = () => { sel.clear(); L.filter((x) => (b.dataset.q === 'ready' ? ready(x) : b.dataset.q === 'pass' ? x.passed && x.best : false)).forEach((x) => sel.add(x.attempt_id)); draw(); }));
+      $('#rSc').onchange = (e) => { showScore = e.target.checked; };
+      const rows = () => L.filter((x) => sel.has(x.attempt_id));
+      $('#rW').onclick = async () => { const W = await waMod(); W.waPanel(W.resultsText(rows(), { showScore }), { title: 'Results message', hint: `${sel.size} result(s)` }); };
+      $('#rP').onclick = async (e) => {
+        const r = rows(); const subs = [...new Set(r.map((x) => x.subject))];
+        e.target.disabled = true;
+        try { await (await docs()).resultsPDF(r, { title: subs.length === 1 ? `${subs[0]} — results` : 'Exam results', showScore }); } catch (er) { toast(er.message || 'PDF failed', 'bad'); }
+        e.target.disabled = false;
+      };
+    };
+    draw();
+  };
+  $('#rL').onclick = loadR; loadR();
+  // ---- downloads
+  $$('[data-xl]').forEach((b) => (b.onclick = async () => {
+    b.classList.add('busy');
+    try { await doDownload(b.dataset.xl, $('#dC').value || null); toast('Downloaded', 'ok'); } catch (e) { toast(errText(e), 'bad'); }
+    b.classList.remove('busy');
+  }));
+}
+async function doDownload(k, course) {
+  const dt = (v) => (v ? new Date(v).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/am|pm/i, (x) => x.toUpperCase()) : '');
+  const today = istLocal(null, 'date');
+      const D = await docs();
+      if (k === 'marks') {
+        const L = await rpc('exam_admin_export_marks', { p_course: course });
+        await D.xlsx(`ZICA-Pune_Marks_${today}.xlsx`, [{ name: 'Marks', rows: L.map((x) => ({ Student: x.name, 'Student ID': String(x.code || '').replace(/\.0$/, ''), Email: x.email, Courses: x.courses || '', Status: x.status || '', Software: x.subject,
+          Attempt: x.attempt_no, Level: LV[x.level] || x.level, Score: x.score, 'Max marks': x.max, 'Percent': x.percent, Grade: x.grade, Result: x.passed ? 'Passed' : 'Not passed',
+          'Result on hold (assignments)': x.held ? 'Yes' : '', 'Finished by': x.how, Warnings: x.warnings, 'Face warnings': x.face, 'Voice heard': x.voice, Started: dt(x.started), Submitted: dt(x.submitted) })) }]);
+      }
+      if (k === 'subs') {
+        const R = await rpc('exam_admin_export_submissions', { p_course: course });
+        await D.xlsx(`ZICA-Pune_Assignments_${today}.xlsx`, [
+          { name: 'Progress per student', rows: R.progress.map((x) => ({ Student: x.name, 'Student ID': String(x.code || '').replace(/\.0$/, ''), Email: x.email, Courses: x.courses || '', Status: x.status || '', Software: x.subject,
+            Required: x.req, Submitted: x.submitted, Approved: x.approved, Redo: x.redo, 'All submitted': x.submitted >= x.req ? 'Yes' : 'No' })) },
+          { name: 'All submissions', rows: R.rows.map((x) => ({ Student: x.name, 'Student ID': String(x.code || '').replace(/\.0$/, ''), Email: x.email, Software: x.subject, Module: x.module || '', Assignment: x.acode, Title: x.title,
+            Status: x.status, Marks: x.marks ?? '', Link: x.link, 'Student note': x.note || '', Feedback: x.feedback || '', Submitted: dt(x.submitted), Reviewed: dt(x.reviewed), 'Reviewed by': x.by || '' })) }]);
+      }
+      if (k === 'bank') {
+        const Q = await rpc('exam_admin_export_bank', { p_subject: null });
+        const DF = { E: 'Easy', M: 'Medium', H: 'Hard' };
+        const subs = [...new Set(Q.map((q) => q.subject))];
+        const sum = subs.map((s) => { const l = Q.filter((q) => q.subject === s && q.active); return { Software: s, Easy: l.filter((q) => q.difficulty === 'E').length, Medium: l.filter((q) => q.difficulty === 'M').length, Hard: l.filter((q) => q.difficulty === 'H').length, Total: l.length }; });
+        await D.xlsx(`ZICA-Pune_Theory-question-banks_${today}.xlsx`, [{ name: 'Summary', rows: sum }, ...subs.map((s) => ({ name: s, rows: Q.filter((q) => q.subject === s).map((q, i) => ({
+          '#': i + 1, Difficulty: DF[q.difficulty] || q.difficulty, Concept: q.concept || '', Question: q.q, 'Option A': q.options?.[0] ?? '', 'Option B': q.options?.[1] ?? '', 'Option C': q.options?.[2] ?? '', 'Option D': q.options?.[3] ?? '',
+          Answer: 'ABCD'[q.correct] || '', Explanation: q.explanation || '', Active: q.active ? 'Yes' : 'No', 'Question ID': q.id })) }))]);
+      }
+      if (k === 'prac') {
+        const P = await rpc('exam_admin_export_prac', { p_course: course });
+        const flat = (c) => (c == null ? '' : typeof c === 'string' ? c : Array.isArray(c) ? c.map(flat).join('\n') : Object.entries(c).map(([k2, v]) => `${k2}: ${flat(v)}`).join('\n'));
+        await D.xlsx(`ZICA-Pune_Practical-papers_${today}.xlsx`, [
+          { name: 'Papers', rows: P.map((p) => ({ Course: p.course, Module: p.module, Paper: p.paper, Title: p.title, Kind: p.kind, Marks: p.marks, Needs: (p.requires || []).join(', '), 'Needs one of': (p.requires_any || []).join(', '), Options: p.options.length, 'With asset pack': p.options.filter((o) => o.asset_url).length, About: p.blurb || '', Active: p.active ? 'Yes' : 'No' })) },
+          { name: 'Question options', rows: P.flatMap((p) => p.options.map((o) => ({ Course: p.course, Module: p.module, Paper: p.paper, 'Paper title': p.title, Option: o.no, 'Option title': o.title, 'Asset pack link': o.asset_url || '(missing)', Content: flat(o.content).slice(0, 32000) }))) }]);
+      }
 }

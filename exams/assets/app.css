@@ -642,3 +642,55 @@ a.kpi-a,.kpi>a{display:block}
 .wrap{padding:0 clamp(16px,3vw,36px)}
 #admin main.wrap{padding-top:4px;padding-bottom:28px}
 .card{padding:clamp(16px,2vw,24px)}
+
+/* ===== v19 · WhatsApp panel · tour · reports · polish ===== */
+.four{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media (max-width:820px){.four{grid-template-columns:1fr 1fr}.three{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.four,.three,.two{grid-template-columns:1fr}}
+/* WhatsApp side panel */
+.wapanel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);z-index:120;display:flex;flex-direction:column;background:#0b141a;border-left:1px solid #1f2c34;
+  box-shadow:-24px 0 60px rgba(0,0,0,.45);transform:translateX(104%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.wapanel.on{transform:none}
+.wahead{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#202c33;border-bottom:1px solid #2a3942}
+.wahead>div:nth-child(2){flex:1} .wahead b{font-size:15px}
+.waic{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#25d366;color:#08251a;flex:none}
+.wabody{flex:1;overflow:auto;padding:18px 14px;background:#0b141a radial-gradient(circle at 20% 10%,rgba(37,211,102,.06),transparent 40%),#0b141a}
+.wabubble{position:relative;margin-left:auto;max-width:96%;background:#005c4b;border-radius:12px 2px 12px 12px;padding:8px 10px 18px;box-shadow:0 1px 1px rgba(0,0,0,.3)}
+.wabubble textarea{width:100%;min-height:220px;resize:none;border:0;outline:0;background:transparent;color:#e9edef;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.watime{position:absolute;right:10px;bottom:4px;font-size:11px;color:#a8d5cb}
+.wafoot{padding:14px 16px 18px;display:grid;gap:10px;background:#111b21;border-top:1px solid #1f2c34}
+.wafoot .btn.pri{background:linear-gradient(135deg,#25d366,#128c7e);color:#06231a;border:0;font-weight:700;box-shadow:0 0 22px rgba(37,211,102,.35)}
+/* guided tour */
+.tour{position:fixed;inset:0;z-index:200;pointer-events:auto}
+.tspot{position:fixed;border-radius:16px;box-shadow:0 0 0 9999px rgba(6,7,10,.72),0 0 0 2px var(--zica),0 0 30px rgba(236,106,34,.55);transition:all .3s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.tcard{position:fixed;background:linear-gradient(160deg,#1d2028,#14161b);border:1px solid rgba(236,106,34,.45);border-radius:18px;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.6);transition:top .3s,left .3s}
+.tcard h3{margin:4px 0 6px;font-size:17px} .tcard p{margin:0;font-size:13.5px;color:var(--ink2);line-height:1.55}
+.tstep{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--zica);font-weight:700}
+.tbtns{display:flex;gap:8px;align-items:center;margin-top:14px}
+.tourbtn{gap:6px}
+/* reports */
+.rgrid{display:grid;gap:18px;margin-top:8px}
+.rcard{padding:20px 22px}
+.rhead{display:flex;gap:14px;align-items:flex-start}
+.rhead h3{margin:0 0 2px}
+.rico{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;color:#fff;background:linear-gradient(140deg,var(--zica),#ff9a5a);box-shadow:0 6px 20px rgba(236,106,34,.35)}
+.rsum{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dlgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.dl{all:unset;cursor:pointer;display:block;padding:16px 18px;border-radius:16px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(255,255,255,.035),transparent);transition:border-color .2s,transform .2s,box-shadow .2s;position:relative}
+.dl:hover{border-color:var(--zica);transform:translateY(-2px);box-shadow:0 10px 30px rgba(236,106,34,.15)}
+.dl b{display:block;font-size:15px;margin-bottom:4px} .dl b::before{content:"⬇";display:inline-grid;place-items:center;width:24px;height:24px;margin-right:8px;border-radius:7px;background:rgba(236,106,34,.18);color:var(--zica);font-size:13px}
+.dl span{font-size:12.5px;color:var(--mute);line-height:1.45}
+.dl.busy{opacity:.6;pointer-events:none} .dl.busy b::after{content:" · preparing…";color:var(--zica);font-weight:500}
+.prog.sm{height:5px;min-width:70px}
+.tbl tr.picked td{background:rgba(236,106,34,.06)}
+/* polish: crisper buttons, focus, gentle page entrance */
+.btn{transition:transform .15s,box-shadow .2s,border-color .2s,background .2s}
+.btn:active{transform:translateY(1px)}
+.btn.pri{box-shadow:0 6px 22px rgba(236,106,34,.32),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn.pri:hover{box-shadow:0 8px 30px rgba(236,106,34,.48),inset 0 1px 0 rgba(255,255,255,.3)}
+:focus-visible{outline:2px solid var(--zica);outline-offset:2px}
+.card{transition:border-color .2s,box-shadow .25s}
+.card:hover{box-shadow:0 10px 40px rgba(0,0,0,.25)}
+@media (prefers-reduced-motion:reduce){.wapanel,.tspot,.tcard{transition:none}}
+.tbl th{position:sticky;top:0;z-index:1}
+.anav a{position:relative}

@@ -1,9 +1,12 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=18';
-import { Cam, watchFaces } from './proctor.js?v=18';
-import { mock } from './demo.js?v=18';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=18';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=19';
+import { Cam, watchFaces } from './proctor.js?v=19';
+import { mock } from './demo.js?v=19';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=19';
+import { startTour, STUDENT_TOUR } from './tour.js?v=19';
+const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
+const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
 const app = $('#app');
 const cam = new Cam();
@@ -73,11 +76,14 @@ async function boot() {
   route();
 }
 
-function bindTop() { $$('[data-signout]').forEach((b) => (b.onclick = () => (DEMO ? toast('Demo mode') : signOut()))); }
+function bindTop() {
+  $$('[data-signout]').forEach((b) => (b.onclick = () => (DEMO ? toast('Demo mode') : signOut())));
+  $$('.tourbtn').forEach((b) => (b.onclick = () => { if (location.hash && location.hash !== '#/') { location.hash = '#/'; setTimeout(() => startTour(tourKey(), STUDENT_TOUR, { force: true }), 900); } else startTour(tourKey(), STUDENT_TOUR, { force: true }); }));
+}
 const modeBtn = () => (ME?.is_admin || ME?.is_staff ? `<a class="btn sm modesw" href="admin.html" title="Switch to the ${ME.is_admin ? 'admin' : 'faculty'} panel">⇄ ${ME.is_admin ? 'Admin' : 'Faculty'} mode</a>` : '');
 function shell(inner, fam = '') {
   if (RUN) return;
-  app.innerHTML = topBar(ME?.student || { email: ME?.email }, modeBtn()) + `<main class="wrap" ${fam ? `data-fam="${fam}"` : ''}>${inner}</main>
+  app.innerHTML = topBar(ME?.student || { email: ME?.email }, TOUR_BTN + modeBtn()) + `<main class="wrap" ${fam ? `data-fam="${fam}"` : ''}>${inner}</main>
     <div class="foot">ZICA Pune · Kothrud · Exams are monitored — camera, timer and screen focus.</div>`;
   bindTop();
   window.scrollTo(0, 0);
@@ -185,6 +191,7 @@ async function homeView() {
     ${howItWorks()}
   `);
   $$('[data-hbook]').forEach((b) => (b.onclick = () => { const c = findCourse(b.dataset.hc); bookModal(c, c?.subjects.find((x) => x.id === b.dataset.hbook)); }));
+  if (!DEMO) setTimeout(() => { if (!$('.ov') && !location.hash.replace(/^#\/?/, '')) startTour(tourKey(), STUDENT_TOUR); }, 700);
 }
 const NOW_ORDER = ['ready', 'scheduled', 'book', 'missed', 'requested', 'assignments', 'held', 'spec'];
 function canNowBlock() {
@@ -508,7 +515,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=18'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=19'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -688,7 +695,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=18').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=19').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -1268,7 +1275,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=18'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=19'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

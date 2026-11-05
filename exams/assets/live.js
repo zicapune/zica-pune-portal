@@ -2,7 +2,7 @@
 // Video + sound go from the student's device to the admin screen (peer-to-peer). When a network blocks that,
 // a free relay carries it; if even that fails, the tile shows a camera photo every 10 seconds instead.
 // The exam itself never depends on this file: every call is wrapped so a failure here cannot affect the paper.
-import { sb } from './common.js?v=18';
+import { sb } from './common.js?v=19';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
