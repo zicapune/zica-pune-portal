@@ -1,6 +1,6 @@
 // ZICA Pune Portal · live camera wall (peer-to-peer WebRTC; Supabase Realtime only carries the small setup messages)
 // The exam itself never depends on this file: every call is wrapped so a failure here cannot affect the paper.
-import { sb } from './common.js?v=15';
+import { sb } from './common.js?v=16';
 
 const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
 const uid = () => Math.random().toString(36).slice(2, 10);

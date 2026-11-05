@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=15';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=16';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -51,6 +51,29 @@ function route() {
 const subjName = (id) => META.subjects.find((s) => s.id === id)?.name || id;
 const subjShort = (id) => META.subjects.find((s) => s.id === id)?.short || id;
 
+// ================================================================= set an exam for one student (now or later)
+function setExamModal(R, sid, after) {
+  const s = R.student, subs = R.subjects.filter((x) => !x.done_external);
+  const local = (d) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 16);
+  const m = modal(`<h2>📅 Set exam · ${esc(s.name)}</h2>
+    <label class="lb">Subject</label><select class="inp" id="sxS">${subs.map((x) => `<option value="${x.id}" ${x.id === sid ? 'selected' : ''}>${esc(x.name)} — ${esc(ST_LBL[x.state] || x.state)} · used ${x.used}/${x.max_attempts}</option>`).join('')}</select>
+    <label class="lb">When</label>
+    <label class="row small" style="gap:8px"><input type="radio" name="sxW" value="now" checked> Open now</label>
+    <label class="row small mt8" style="gap:8px"><input type="radio" name="sxW" value="at"> At <input class="inp" id="sxT" type="datetime-local" value="${local(new Date(Date.now() + 3600000))}" style="width:auto;padding:6px 10px"> IST</label>
+    <div class="two"><div><label class="lb">Window (minutes the slot stays open)</label><input class="inp" id="sxM" type="number" min="60" max="600" value="${META.settings.book_window_min || 120}"></div>
+      <div><label class="lb">Attempts</label><label class="row small" style="gap:8px;margin-top:10px"><input type="checkbox" id="sxX" checked> Add one more attempt if none are left</label></div></div>
+    <label class="lb">Note to the student (optional)</label><input class="inp" id="sxN" maxlength="300" placeholder="e.g. Retake approved after the camera problem.">
+    <div class="tiny dim mt8">An exam on hold is released, any pending date request for this subject is replaced, and the student is emailed.</div>
+    <div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Set exam</button></div>`, 'wide');
+  m.el.querySelector('[data-x]').onclick = m.close;
+  m.el.querySelector('[data-ok]').onclick = () => {
+    const at = m.el.querySelector('input[name=sxW]:checked').value === 'at' ? new Date($('#sxT', m.el).value + ':00+05:30') : null;
+    if (at && !(at > new Date())) return toast('Pick a future time.', 'bad');
+    const p = { p_student: s.id, p_subject: $('#sxS', m.el).value, p_at: at ? at.toISOString() : null, p_window: +$('#sxM', m.el).value || 120, p_extra: $('#sxX', m.el).checked, p_note: $('#sxN', m.el).value.trim() || null };
+    m.close(); run(() => rpc('exam_admin_set_exam', p), at ? `Exam set for ${fmtDT(at)} — student emailed` : 'Exam open now — student emailed', after);
+  };
+}
+
 // ================================================================= live camera wall
 let LIVE = null;
 async function wall() {
@@ -59,7 +82,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="wall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">If a tile stays on “Connecting”, the student's network (often mobile data) is blocking direct video — their camera photos are still saved as usual. Tap the tile to retry.</p>`);
-  let mod; try { mod = await import('./live.js?v=15'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=16'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -106,11 +129,24 @@ async function wall() {
 async function approve() {
   frame(`<div class="phead spread"><div><h1>Approvals</h1><div class="small muted">Open practical papers for students who passed their theory, and allow exam retakes. Each student is emailed automatically.</div></div>
     <button class="btn" id="apR">↻ Refresh</button></div>
-    <div id="ap1"><div class="spin"></div></div><div id="ap2" class="mt32"><div class="spin"></div></div>`);
+    <div id="ap1"><div class="spin"></div></div><div id="ap2" class="mt32"><div class="spin"></div></div><div id="ap3" class="mt32"><div class="spin"></div></div>`);
   $('#apR').onclick = approve;
   let P = [], R = [];
-  try { [P, R] = await Promise.all([rpc('exam_admin_prac_pending'), rpc('exam_admin_retake_list')]); } catch (e) { return toast(errText(e), 'bad'); }
   const all = (box, attr) => { const c = $(`#${box} [data-all]`); if (c) c.onchange = () => $$(`#${box} [${attr}]`).forEach((x) => (x.checked = c.checked)); };
+  let B = [];
+  try { [P, R, B] = await Promise.all([rpc('exam_admin_prac_pending'), rpc('exam_admin_retake_list'), rpc('exam_admin_blocked_list')]); } catch (e) { return toast(errText(e), 'bad'); }
+  $('#ap3').innerHTML = `<div class="spread"><h3>⛔ Exams on hold (blocked) · ${B.length}</h3>${B.length ? '<button class="btn pri" id="ubGo">Release selected</button>' : ''}</div>
+    <p class="small muted">Blocked from a student's page (Eligibility → Block), e.g. for misconduct. Releasing emails the student that they may request a retake. Students can also request one while blocked — it arrives in Requests.</p>
+    ${B.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th><input type="checkbox" data-all></th><th>Student</th><th>Subject</th><th>Since</th><th>Student's request</th></tr>
+      ${B.map((x, i) => `<tr><td><input type="checkbox" data-ub="${i}"></td><td><a href="#" data-stu="${x.student_id}"><b>${esc(x.name)}</b></a><div class="tiny dim">${esc(x.email)}</div></td><td>${esc(x.subject)}</td>
+        <td class="small">${fmtDT(x.since)}${x.by ? '<div class="tiny dim">' + esc(x.by) + '</div>' : ''}</td><td class="small">${x.request ? esc(x.request) : '<span class="dim">—</span>'}</td></tr>`).join('')}</table></div>` : '<div class="empty mt8">No exams are on hold.</div>'}`;
+  all('ap3', 'data-ub');
+  $$('#ap3 [data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu, approve); }));
+  $('#ubGo') && ($('#ubGo').onclick = async () => {
+    const items = $$('#ap3 [data-ub]:checked').map((c) => B[+c.dataset.ub]).map((x) => ({ student_id: x.student_id, subject_id: x.subject_id }));
+    if (!items.length) return toast('Tick at least one.', 'bad');
+    run(() => rpc('exam_admin_unblock', { p_items: items }), 'Released — students emailed', approve);
+  });
   $('#ap1').innerHTML = `<div class="spread"><h3>🎨 Practical papers to open · ${P.length}</h3>${P.length ? '<button class="btn pri" id="apGo">Open selected practicals</button>' : ''}</div>
     <p class="small muted">These students passed every theory exam the practical needs. Opening it emails them that the paper is available; results still wait for all assignments.</p>
     ${P.length ? `<div class="tscroll mt8" style="max-height:none"><table class="tbl"><tr><th><input type="checkbox" data-all></th><th>Student</th><th>Course</th><th>Practical</th><th>Theory passed</th></tr>
@@ -408,7 +444,7 @@ async function studentDrawer(id, after) {
   const s = R.student;
   d.innerHTML = `<div class="dh"><div class="avatar" style="width:44px;height:44px">${esc(initials(s.name))}</div>
       <div style="flex:1;min-width:0"><h3>${esc(s.name)}</h3><div class="small muted">${esc(s.email)}${s.alt_emails?.length ? ' · alt: ' + esc(s.alt_emails.join(', ')) : ''}</div></div>
-      <button class="btn sm" data-edit title="Edit details or change the student's course(s)">Edit · change course</button><button class="btn sm ghost" data-close>✕</button></div>
+      <button class="btn sm pri" data-setx title="Schedule an exam for this student now or at a time">📅 Set exam</button><button class="btn sm" data-edit title="Edit details or change the student's course(s)">Edit · change course</button><button class="btn sm ghost" data-close>✕</button></div>
     <div class="db">
       <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill info">${esc(s.status || '—')}</span>${s.blocked ? '<span class="pill bad">Blocked</span>' : ''}
         ${s.cert_given ? '<span class="pill ok">Certificate given</span>' : ''}<span class="pill">${s.login_count} logins · last ${ago(s.last_login)}</span>
@@ -420,7 +456,7 @@ async function studentDrawer(id, after) {
         ${R.subjects.map((x) => `<tr><td><b>${esc(x.name)}</b>${x.ticked ? ' <span class="tiny dim" title="Ticked in Summary">✓S</span>' : ''}
             ${x.assign?.req ? `<div class="tiny dim">assignments ${x.assign.approved}/${x.assign.req}</div>` : ''}</td>
           <td><span class="pill ${stCls(x.state)}" title="${esc(x.seq_block ? 'after ' + x.seq_block : '')}">${esc(ST_LBL[x.state] || x.state)}</span></td>
-          <td><button class="btn sm ${x.unlocked ? 'ok' : ''}" data-tog="${x.id}" data-v="${x.unlocked ? 0 : 1}">${x.unlocked ? 'Unlocked' : '🔒 Locked'}</button></td>
+          <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ${x.unlocked ? 'ok' : ''}" data-tog="${x.id}" data-v="${x.unlocked ? 0 : 1}">${x.unlocked ? 'Unlocked' : '🔒 Locked'}</button><button class="btn sm" data-setx="${x.id}" title="Set this exam now or at a time">📅</button></div></td>
           <td><select class="inp" style="padding:6px 8px" data-lvl="${x.id}"><option value="">Student chooses</option>${['easy', 'medium', 'hard'].map((l) => `<option value="${l}" ${x.level_lock === l ? 'selected' : ''}>${LV[l]}</option>`).join('')}</select></td>
           <td><input class="inp" style="padding:6px 8px;width:64px" type="number" min="1" max="9" value="${x.max_attempts}" data-ma="${x.id}"><span class="tiny dim"> used ${x.used}</span></td>
           <td><select class="inp" style="padding:6px 8px" data-ov="${x.id}">
@@ -465,6 +501,7 @@ async function studentDrawer(id, after) {
   const reload = () => studentDrawer(id, after);
   d.querySelector('[data-close]').onclick = close;
   d.querySelector('[data-edit]').onclick = () => studentForm(R, reload);
+  $$('[data-setx]', d).forEach((b) => (b.onclick = () => setExamModal(R, b.dataset.setx || '', reload)));
   $$('[data-tog]', d).forEach((b) => (b.onclick = () => run(() => rpc('exam_admin_set_unlock', { p_students: [id], p_subjects: [b.dataset.tog], p: { unlocked: b.dataset.v === '1' } }), 'Saved', reload)));
   $$('[data-lvl]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_set_unlock', { p_students: [id], p_subjects: [b.dataset.lvl], p: { level_lock: b.value } }), 'Level saved')));
   $$('[data-ma]', d).forEach((b) => (b.onchange = () => run(() => rpc('exam_admin_set_unlock', { p_students: [id], p_subjects: [b.dataset.ma], p: { max_attempts: +b.value } }), 'Attempts saved')));
@@ -481,7 +518,7 @@ async function studentDrawer(id, after) {
       else im.textContent = r?.drive_name ? 'Saved in Drive' : 'not available'; } catch (e) { im.textContent = 'error'; }
   }));
 }
-const PST_LBL = { ready: 'Can start', theory: 'Theory pending', spec: 'Needs specialisation', preparing: 'Paper being prepared', in_progress: 'Working now', submitted: 'To mark', marked: 'Marked' };
+const PST_LBL = { approval: 'Awaiting your approval', ready: 'Can start', theory: 'Theory pending', spec: 'Needs specialisation', preparing: 'Paper being prepared', in_progress: 'Working now', submitted: 'To mark', marked: 'Marked' };
 const PST_CLS = { ready: 'ok', theory: '', spec: 'warn', preparing: '', in_progress: 'info', submitted: 'warn', marked: 'ok' };
 const ST_LBL = { held: 'Result on hold', spec: 'Needs specialisation', live: 'Writing now', exempt: 'Done earlier', locked: 'Locked', done: 'Attempts used', preparing: 'Bank not ready', blocked: 'Blocked', sequence: 'Waiting (order)',
   assignments: 'Needs assignments', ready: 'Open now', requested: 'Date requested', scheduled: 'Scheduled', missed: 'Missed', book: 'Can book' };
@@ -600,7 +637,7 @@ async function requests() {
   const pend = R.bookings.filter((b) => b.status === 'pending'), done = R.bookings.filter((b) => b.status !== 'pending');
   const cpend = R.claims.filter((c) => c.status === 'pending');
   const sel = new Set();
-  const KIND = { new: ['info', 'New'], reschedule: ['warn', 'Reschedule'], missed: ['bad', 'Missed'], email: ['mark', 'By email'] };
+  const KIND = { new: ['info', 'New'], reschedule: ['warn', 'Reschedule'], missed: ['bad', 'Missed'], email: ['mark', 'By email'], retake: ['mark', 'Retake request'] };
   const bRow = (b) => `<div class="card rqc" style="padding:16px"><div class="spread" style="align-items:flex-start;gap:12px">
       <label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" data-bs="${b.id}" style="margin-top:4px">
         <div><div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill ${KIND[b.kind]?.[0] || ''}">${KIND[b.kind]?.[1] || esc(b.kind)}</span>
@@ -909,7 +946,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=15');
+        const { practicalPDF } = await import('./pdf.js?v=16');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
