@@ -2,7 +2,7 @@
 // Video + sound go from the student's device to the admin screen (peer-to-peer). When a network blocks that,
 // a free relay carries it; if even that fails, the tile shows a camera photo every 10 seconds instead.
 // The exam itself never depends on this file: every call is wrapped so a failure here cannot affect the paper.
-import { sb } from './common.js?v=19';
+import { sb } from './common.js?v=20';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -140,10 +140,15 @@ export function adminLive(onTile) {
     c.guard = setTimeout(() => { if (!c.live) photoMode(c, true); }, 20000);
     onTile(item.key, { state: 'connecting' });
   };
+  let micOff = null;
+  const releaseMic = () => { Object.values(conns).forEach((c) => { try { c.clone?.stop(); c.clone = null; c.pc?.getSenders().forEach((s) => s.track?.kind === 'audio' && s.replaceTrack(null)); } catch {} });
+    mic?.getTracks().forEach((t) => t.stop()); mic = null; };
   const talk = async (key, on) => {
-    try { await ensureMic(); } catch { return false; }
+    clearTimeout(micOff);
+    if (on) { try { await ensureMic(); } catch { return false; } }
     const list = key ? [conns[key]].filter(Boolean) : Object.values(conns);
     list.forEach((c) => { c.talking = on; if (c.clone) c.clone.enabled = on; c.ch.send({ t: 'talk', on }); });
+    if (!on) micOff = setTimeout(releaseMic, 1500);     // mic is switched off as soon as you stop talking
     return true;
   };
   const drop = (key) => { const c = conns[key]; if (!c) return; try { clearTimeout(c.guard); photoMode(c, false); c.ch.send({ t: 'bye', from: me }); c.pc?.close(); c.ch.close(); } catch {} delete conns[key]; };

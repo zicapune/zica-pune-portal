@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=19';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=20';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -35,7 +35,7 @@ function bindTop() {
   $$('.tourbtn').forEach((b) => (b.onclick = () => runTour(true)));
 }
 async function runTour(force) {
-  const T = await import('./tour.js?v=19');
+  const T = await import('./tour.js?v=20');
   const key = 'adm_' + (ME?.me || ''), steps = META?.is_admin ? T.ADMIN_TOUR : T.STAFF_TOUR;
   if (META?.is_admin && force && S.tab !== 'dash') { location.hash = '#/dash'; setTimeout(() => T.startTour(key, steps, { force }), 1400); return; }
   T.startTour(key, steps, { force });
@@ -99,7 +99,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="lwall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
-  let mod; try { mod = await import('./live.js?v=19'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=20'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -439,6 +439,7 @@ function cellModal(s, sid, after) {
     <div class="row" style="gap:6px;flex-wrap:wrap">${c.best ? `<span class="pill ${c.best.p ? 'ok' : 'bad'}">Best ${esc(c.best.g)} · ${c.best.sc}/${c.best.mx} · ${c.best.lv}</span>` : ''}
       <span class="pill">${c.n} of ${c.ma} attempts used</span>${c.src ? `<span class="pill">source: ${esc(c.src)}</span>` : ''}</div>
     ${c.ar ? `<div class="asgline mt16"><b>Assignments</b><span>${asgTxt(c)}</span><div class="prog"><i style="width:${Math.round(((+String(c.as || '0/0').split('/')[1] || 0) / c.ar) * 100)}%"></i></div></div>` : ''}
+    ${c.ar ? `<button class="btn sm mt8" data-brief>⬇ Assignment briefs (PDF)</button>` : ''}
     ${c.live ? '' : `<div class="setnow mt16"><div><b>${IC.cal} Schedule this exam</b><span>Open it now, or pick a date and time — ${esc(s.name.split(' ')[0])} gets an email.</span></div><button class="btn pri" data-setx>Set exam</button></div>`}
     <label class="lb">Exam access</label>
     <div class="row"><button class="btn ${c.u ? 'ok' : ''}" data-u="1">Unlocked</button><button class="btn ${!c.u ? 'bad' : ''}" data-u="0">Locked</button></div>
@@ -456,6 +457,9 @@ function cellModal(s, sid, after) {
   $$('[data-u]', m.el).forEach((b) => (b.onclick = () => { u = b.dataset.u === '1'; $$('[data-u]', m.el).forEach((x) => (x.className = 'btn ' + (x.dataset.u === '1' ? (u ? 'ok' : '') : (!u ? 'bad' : '')))); }));
   m.el.querySelector('[data-x]').onclick = m.close;
   m.el.querySelector('[data-rep]')?.addEventListener('click', () => { m.close(); reportModal(c.best.id); });
+  m.el.querySelector('[data-brief]')?.addEventListener('click', async (e) => { e.target.disabled = true;
+    try { const d = await rpc('exam_admin_assignments', { p_subject: sid }); const { briefPDF } = await import('./pdf.js?v=20'); await briefPDF({ subject: d.subject, items: d.items, student: s }); }
+    catch (er) { toast(errText(er), 'bad'); } e.target.disabled = false; });
   m.el.querySelector('[data-setx]')?.addEventListener('click', () => { m.close();
     const subs = Object.entries(s.cells || {}).map(([id, x]) => ({ id, name: subjName(id), state: x.live ? 'live' : x.best ? (x.best.p ? 'done' : 'book') : x.u ? 'ready' : 'locked', used: x.n || 0, max_attempts: x.ma || 2, done_external: !!x.ext }));
     if (!subs.some((x) => x.id === sid)) subs.unshift({ id: sid, name: subjName(sid), state: 'locked', used: c.n || 0, max_attempts: c.ma || 2 });
@@ -1037,7 +1041,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=19');
+        const { practicalPDF } = await import('./pdf.js?v=20');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -1133,8 +1137,8 @@ async function groupExam(after, pre) {
 
 // ================================================================= Reports · schedule PDF + WhatsApp · notice-board results · downloads
 const dIn = (days) => istLocal(new Date(Date.now() + days * 864e5).toISOString(), 'date');
-const docs = () => import('./docs.js?v=19');
-const waMod = () => import('./wa.js?v=19');
+const docs = () => import('./docs.js?v=20');
+const waMod = () => import('./wa.js?v=20');
 // after anything is scheduled: WhatsApp draft for those slot(s)
 async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
   try {

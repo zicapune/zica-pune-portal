@@ -1,10 +1,10 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=19';
-import { Cam, watchFaces } from './proctor.js?v=19';
-import { mock } from './demo.js?v=19';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=19';
-import { startTour, STUDENT_TOUR } from './tour.js?v=19';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=20';
+import { Cam, watchFaces } from './proctor.js?v=20';
+import { mock } from './demo.js?v=20';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=20';
+import { startTour, STUDENT_TOUR } from './tour.js?v=20';
 const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
 const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
@@ -515,7 +515,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=19'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=20'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -695,7 +695,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=19').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=20').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -1197,7 +1197,7 @@ function pracCard(p) {
     case 'theory': status = `<span class="pill">Pass theory first</span>`;
       action = `<div class="small muted">Needs: ${p.missing.map((m) => `<b style="color:var(--ink)">${esc(m.name)}</b>`).join(', ')}</div>`; break;
     case 'spec': status = `<span class="pill warn">Choose specialisation</span>`; action = `<div class="small muted">Pick your specialisation above.</div>`; break;
-    case 'preparing': status = `<span class="pill warn">Paper being prepared</span>`; action = `<div class="small muted">You'll be informed when it's ready.</div>`; break;
+    case 'preparing': status = `<span class="pill">On hold</span>`; action = `<div class="small muted">Your academic head will unlock this practical for you — you'll get an email when it opens.</div>`; break;
     case 'in_progress': status = `<span class="pill bad"><span class="dot pulse"></span>In progress</span>`;
       action = `<div class="small" style="color:var(--ink)">Submit by ${fmtDT(a.deadline_at)}</div><a class="btn pri sm mt8" href="#/p/${a.id}">Open paper</a>`; break;
     case 'submitted': status = `<span class="pill info">Submitted · awaiting marks</span>`;
@@ -1275,7 +1275,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=19'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=20'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

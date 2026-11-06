@@ -1,8 +1,8 @@
 // ZICA Pune Portal · WhatsApp drafts (side panel: edit → open WhatsApp with the text filled in, or copy)
 // WhatsApp does not let a website open a particular group directly — it opens the chat chooser with the text ready;
 // you tap the group and press send.
-import { esc, toast } from './common.js?v=19';
-import { dShort, dDay, tm, idc } from './docs.js?v=19';
+import { esc, toast } from './common.js?v=20';
+import { dShort, dDay, tm, idc } from './docs.js?v=20';
 
 export const PORTAL_URL = 'https://zicapune.github.io/zica-pune-portal/exams/';
 const isPhone = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
