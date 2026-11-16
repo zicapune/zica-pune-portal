@@ -1,10 +1,10 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=21';
-import { Cam, watchFaces } from './proctor.js?v=21';
-import { mock } from './demo.js?v=21';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=21';
-import { startTour, STUDENT_TOUR } from './tour.js?v=21';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=22';
+import { Cam, watchFaces } from './proctor.js?v=22';
+import { mock } from './demo.js?v=22';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=22';
+import { startTour, STUDENT_TOUR } from './tour.js?v=22';
 const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
 const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
@@ -30,7 +30,7 @@ function examRules() {
     ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked. On a phone, turn on Do Not Disturb first — a call or pop-up that covers the exam counts as a warning.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
-    ['record', 'I agree to follow the exam rules', 'My answers, timings and any warnings are part of my exam record with the academic team.'],
+    ['record', 'I understand this exam is proctored and may be recorded', 'For fair exam practice, video and audio may be recorded wherever required — for example on switching tabs, leaving the camera frame, or speaking to another person or an AI assistant. Recordings are used only by the academic team to review the exam. My answers, timings and warnings are part of my exam record.'],
   ];
 }
 const rulesList = () => `<ul class="rlist">${examRules().map((r) => `<li><b>${esc(r[1])}</b><span>${r[2]}</span></li>`).join('')}</ul>`;
@@ -206,12 +206,24 @@ const STRIP = { live: ['run', 'exam running'], ready: ['open', 'exam open'], boo
   feed: ['lock', 'locked'], blocked: ['lock', 'on hold'], locked: ['later', 'not started'], preparing: ['later', 'coming soon'], noexam: ['later', 'no exam'], spec: ['wait', 'choose specialisation'] };
 function progressStrip() {
   return ME.courses.filter((c) => c.subjects.length).map((c) => {
-    const done = c.subjects.filter((s) => s.best?.passed || s.state === 'exempt').length;
-    return `<div class="pstrip" data-fam="${c.family}"><div class="spread"><b>${esc(c.name)}</b><span class="small muted">${done} of ${c.subjects.length} done${done === c.subjects.length ? ' · 🎓 ready for your certificate' : ''}</span></div>
-      <div class="prog"><i style="width:${Math.round((done / c.subjects.length) * 100)}%"></i></div>
-      <div class="psteps">${c.subjects.map((s) => { const [k, t] = STRIP[s.state] || ['later', s.state]; const f = s.feed || {};
-        return `<a class="pstep ${k}" href="#/c/${encodeURIComponent(c.id)}" title="${esc(s.lock_note || f.note || '')}"><span class="pd"></span><b>${esc(s.name)}</b>
-          <small>${f.att != null ? `attendance ${Math.round(f.att)}% · ` : ''}${s.best?.passed ? esc(s.best.grade || 'passed') + ' · ' : ''}${t}</small></a>`; }).join('')}</div></div>`;
+    const n = c.subjects.length, done = c.subjects.filter((s) => s.best?.passed || s.state === 'exempt').length;
+    const atts = c.subjects.map((s) => s.feed?.att).filter((x) => x != null), avg = atts.length ? Math.round(atts.reduce((a, b) => a + +b, 0) / atts.length) : null;
+    const asg = c.subjects.reduce((a, s) => [a[0] + (s.assign?.submitted || 0), a[1] + (s.assign?.req || 0)], [0, 0]);
+    const pct = Math.round((done / n) * 100);
+    return `<div class="pstrip" data-fam="${c.family}"><div class="phd"><div class="ring" style="--p:${pct}"><b>${pct}%</b></div>
+        <div style="flex:1;min-width:0"><b class="pt">${esc(c.name)}</b><div class="small muted">${done} of ${n} checkpoints cleared${done === n ? ' · 🎓 ready for your certificate' : ''}</div>
+          <div class="pstats">${avg != null ? `<span class="${avg >= 75 ? 'g' : avg >= 60 ? 'w' : 'b'}">Average attendance ${avg}%</span>` : ''}${asg[1] ? `<span>Assignments ${asg[0]} of ${asg[1]} submitted</span>` : ''}<span>${c.subjects.filter((s) => (STRIP[s.state] || [])[0] === 'open').length} exam(s) open now</span></div></div></div>
+      <div class="cps">${c.subjects.map((s, i) => { const [k, t] = STRIP[s.state] || ['later', s.state]; const f = s.feed || {}, A = s.assign || {};
+        const batch = { done: 'lectures completed', ongoing: 'batch running' }[String(f.batch || '').toLowerCase()] || (f.batch ? String(f.batch).toLowerCase() : '');
+        const ex = s.best?.passed ? `Exam passed · <b>${esc(s.best.grade || '')}</b>${s.best.percent != null ? ` (${Math.round(s.best.percent)}%)` : ''}`
+          : s.state === 'held' ? `Exam written · result on hold until all ${A.req} assignments are submitted (${A.submitted || 0} so far)`
+          : s.state === 'assignments' ? `Exam opens after ${Math.max(1, (A.need || 0) - (A.submitted || 0))} more assignment(s)${lvMiss(A) ? ' · ' + lvMiss(A) : ''}`
+          : s.state === 'feed' || s.state === 'noexam' ? esc(s.lock_note || t)
+          : s.best && !s.best.passed ? `Not passed yet · ${t}` : capW(t);
+        return `<a class="cp ${k}" href="#/c/${encodeURIComponent(c.id)}"><span class="cn">${k === 'done' ? '✓' : i + 1}</span><div><b>${esc(s.name)}</b>
+          ${f.att != null ? `<div class="cl"><i class="${f.att >= 75 ? 'g' : f.att >= 60 ? 'w' : 'b'}"></i>Attendance ${Math.round(f.att)}%${batch ? ' · ' + esc(batch) : ''}</div>` : ''}
+          ${A.req ? `<div class="cl"><i class="${(A.submitted || 0) >= A.req ? 'g' : (A.submitted || 0) >= (A.need || 0) ? 'w' : 'b'}"></i>Assignments ${A.submitted || 0} of ${A.req} submitted</div>` : ''}
+          <div class="cl cx">${ex}</div></div></a>`; }).join('')}</div></div>`;
   }).join('');
 }
 function ackBlock() {
@@ -562,7 +574,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=21'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=22'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -741,7 +753,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=21').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=22').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -1321,7 +1333,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=21'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=22'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
