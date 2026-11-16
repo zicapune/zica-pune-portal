@@ -1,10 +1,10 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=22';
-import { Cam, watchFaces } from './proctor.js?v=22';
-import { mock } from './demo.js?v=22';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=22';
-import { startTour, STUDENT_TOUR } from './tour.js?v=22';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=23';
+import { Cam, watchFaces } from './proctor.js?v=23';
+import { mock } from './demo.js?v=23';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=23';
+import { startTour, STUDENT_TOUR } from './tour.js?v=23';
 const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
 const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
@@ -160,6 +160,7 @@ const allSubjects = () => ME.courses.flatMap((c) => c.subjects.map((s) => ({ ...
 async function homeView() {
   shell('<div class="spin"></div>');
   try { await refresh(); } catch (e) { return fatal(errText(e)); }
+  if (!DEMO && !ME.extra) ME.extra = await api('exam_feed_extra').catch(() => []);
   const first = (ME.student.name || '').split(' ')[0];
   const live = allSubjects().find((s) => s.state === 'live');
   const cards = ME.courses.map((c) => {
@@ -221,10 +222,11 @@ function progressStrip() {
           : s.state === 'feed' || s.state === 'noexam' ? esc(s.lock_note || t)
           : s.best && !s.best.passed ? `Not passed yet · ${t}` : capW(t);
         return `<a class="cp ${k}" href="#/c/${encodeURIComponent(c.id)}"><span class="cn">${k === 'done' ? '✓' : i + 1}</span><div><b>${esc(s.name)}</b>
-          ${f.att != null ? `<div class="cl"><i class="${f.att >= 75 ? 'g' : f.att >= 60 ? 'w' : 'b'}"></i>Attendance ${Math.round(f.att)}%${batch ? ' · ' + esc(batch) : ''}</div>` : ''}
+          ${f.att != null ? `<div class="cl"><i class="${f.att >= 75 ? 'g' : f.att >= 60 ? 'w' : 'b'}"></i>Attendance ${Math.round(f.att)}%${batch ? ' · ' + esc(batch) : ''}${f.done_on ? ' on ' + esc(f.done_on) : ''}</div>` : ''}
           ${A.req ? `<div class="cl"><i class="${(A.submitted || 0) >= A.req ? 'g' : (A.submitted || 0) >= (A.need || 0) ? 'w' : 'b'}"></i>Assignments ${A.submitted || 0} of ${A.req} submitted</div>` : ''}
           <div class="cl cx">${ex}</div></div></a>`; }).join('')}</div></div>`;
-  }).join('');
+  }).join('') + ((ME.extra || []).length ? `<div class="pstrip"><b class="pt">Also part of your programme</b><div class="small muted" style="margin:2px 0 10px">No exam on the portal for these.</div>
+    <div class="cps">${ME.extra.map((x) => `<div class="cp later" style="opacity:.85"><span class="cn">•</span><div><b>${esc(x.subject)}</b><div class="cl cx">${esc(x.note || (x.access === 'No exam' ? 'No exam — for your information.' : 'Details will follow.'))}</div></div></div>`).join('')}</div></div>` : '');
 }
 function ackBlock() {
   const L = allSubjects().filter((s) => s.assign?.ack_needed);
@@ -574,7 +576,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=22'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=23'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -753,7 +755,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=22').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=23').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -1333,7 +1335,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=22'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=23'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);
