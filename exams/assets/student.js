@@ -1,10 +1,10 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=20';
-import { Cam, watchFaces } from './proctor.js?v=20';
-import { mock } from './demo.js?v=20';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=20';
-import { startTour, STUDENT_TOUR } from './tour.js?v=20';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=21';
+import { Cam, watchFaces } from './proctor.js?v=21';
+import { mock } from './demo.js?v=21';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=21';
+import { startTour, STUDENT_TOUR } from './tour.js?v=21';
 const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
 const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
@@ -25,12 +25,12 @@ function examRules() {
   const S = ME?.settings || {}, vl = S.violation_limit ?? 2, fl = S.face_limit ?? 3, dur = S.duration || 60;
   return [
     ['alone', 'I am alone in a quiet room', 'No one will sit with me, talk to me or help me during the exam.'],
-    ['camera', 'My camera and microphone stay on, and my face stays in the frame', `If my face leaves the camera, more than one face appears, or the camera or microphone goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given. Photos are taken at random and on every warning.`],
-    ['voice', 'I will stay silent — no reading questions aloud, no voice assistants', 'The microphone listens during the whole exam. If speech is heard — me, another person, or a phone/AI voice assistant such as ChatGPT or Gemini — a short video-and-sound clip is recorded and the academic team reviews it. A red <b>● REC</b> badge shows on my screen whenever a clip is being recorded. The academic team may also watch and listen live at any time during the exam.'],
+    ['camera', 'My camera and microphone stay on, and my face stays in the frame', `If my face leaves the camera, more than one face appears, or the camera or microphone goes off, I get a warning. After ${fl} face warnings the exam is submitted automatically with the answers I have given.`],
+    ['voice', 'I will write this exam alone and in silence', 'No talking, no reading questions aloud, and no help from another person, a phone or any AI assistant. This exam is proctored.'],
     ['tabs', 'I will not switch tabs, apps or windows, or leave full screen', `Warnings 1${vl > 1 ? '–' + vl : ''} are shown on screen. Warning ${vl + 1} pauses and locks my exam until the Academic Head reviews it — the timer keeps running. Copy, paste and printing are blocked. On a phone, turn on Do Not Disturb first — a call or pop-up that covers the exam counts as a warning.`],
     ['help', 'No phones, notes, books, ChatGPT or any AI tool', 'Only this exam screen is allowed. Any outside help means the exam can be cancelled.'],
     ['time', `I will finish within ${dur} minutes`, 'The timer starts only when I press Start, after reading these rules. Opening the paper counts as an attempt. If I get disconnected I can resume until the time ends; unanswered questions score zero.'],
-    ['record', 'I agree my activity is recorded', 'Logins, answers, time spent on each question, tab switches, camera photos and voice clips are saved to my student record and seen only by the academic team.'],
+    ['record', 'I agree to follow the exam rules', 'My answers, timings and any warnings are part of my exam record with the academic team.'],
   ];
 }
 const rulesList = () => `<ul class="rlist">${examRules().map((r) => `<li><b>${esc(r[1])}</b><span>${r[2]}</span></li>`).join('')}</ul>`;
@@ -184,6 +184,8 @@ async function homeView() {
         <div class="spread"><div><span class="pill bad"><span class="dot pulse"></span>Exam in progress</span>
         <h3 class="mt8">${esc(live.name)}</h3><div class="small muted">Your timer is running. Resume now to keep answering.</div></div>
         <a class="btn pri" href="#/s/${encodeURIComponent(live.course.id)}/${live.id}">Resume exam</a></div></div>` : ''}
+    ${ackBlock()}
+    ${ME.courses.length ? `<div class="spread mt24"><h3 style="margin:0">Your progress</h3><button class="btn sm ghost" id="helpB">🙋 Need help?</button></div>${progressStrip()}` : ''}
     ${canNowBlock()}
     ${ME.courses.length ? `<div class="spread mt32" data-tour="courses"><h3 style="margin:0">Your courses & assignments</h3><span class="small muted">Open a course for its exams, assignment briefs and practical papers</span></div><div class="grid courses mt16">${cards}</div>`
       : `<div class="empty mt24">No courses are linked to your account yet. Please contact the Academic Head.</div>`}
@@ -191,7 +193,46 @@ async function homeView() {
     ${howItWorks()}
   `);
   $$('[data-hbook]').forEach((b) => (b.onclick = () => { const c = findCourse(b.dataset.hc); bookModal(c, c?.subjects.find((x) => x.id === b.dataset.hbook)); }));
+  $('#helpB') && ($('#helpB').onclick = helpModal);
+  $('#ackB') && ($('#ackB').onclick = async () => { try { for (const s of allSubjects().filter((x) => x.assign?.ack_needed)) await api('exam_assign_ack', { p_subject: s.id }); toast('Noted. Thank you.', 'ok'); homeView(); } catch (e) { toast(errText(e), 'bad'); } });
   if (!DEMO) setTimeout(() => { if (!$('.ov') && !location.hash.replace(/^#\/?/, '')) startTour(tourKey(), STUDENT_TOUR); }, 700);
+}
+// ---- assignments: which level still needs one submission
+const capW = (x) => String(x || '').replace(/^./, (c) => c.toUpperCase());
+function lvMiss(A) { const m = (A?.levels || []).filter((l) => l.n > 0 && !l.done); return m.length && (A.submitted || 0) < A.req ? m.map((l) => `${capW(l.level)}: 0 of ${l.n} (at least 1 needed)`).join(' · ') : ''; }
+// ---- progress strip: every software of the course in order, with attendance and what is open
+const STRIP = { live: ['run', 'exam running'], ready: ['open', 'exam open'], book: ['open', 'exam open · book a date'], missed: ['open', 'pick a new date'], scheduled: ['open', 'exam booked'], requested: ['open', 'date requested'],
+  assignments: ['wait', 'assignments pending'], sequence: ['wait', 'next in line'], held: ['wait', 'result on hold · assignments'], done: ['done', 'exam done'], exempt: ['done', 'completed'],
+  feed: ['lock', 'locked'], blocked: ['lock', 'on hold'], locked: ['later', 'not started'], preparing: ['later', 'coming soon'], noexam: ['later', 'no exam'], spec: ['wait', 'choose specialisation'] };
+function progressStrip() {
+  return ME.courses.filter((c) => c.subjects.length).map((c) => {
+    const done = c.subjects.filter((s) => s.best?.passed || s.state === 'exempt').length;
+    return `<div class="pstrip" data-fam="${c.family}"><div class="spread"><b>${esc(c.name)}</b><span class="small muted">${done} of ${c.subjects.length} done${done === c.subjects.length ? ' · 🎓 ready for your certificate' : ''}</span></div>
+      <div class="prog"><i style="width:${Math.round((done / c.subjects.length) * 100)}%"></i></div>
+      <div class="psteps">${c.subjects.map((s) => { const [k, t] = STRIP[s.state] || ['later', s.state]; const f = s.feed || {};
+        return `<a class="pstep ${k}" href="#/c/${encodeURIComponent(c.id)}" title="${esc(s.lock_note || f.note || '')}"><span class="pd"></span><b>${esc(s.name)}</b>
+          <small>${f.att != null ? `attendance ${Math.round(f.att)}% · ` : ''}${s.best?.passed ? esc(s.best.grade || 'passed') + ' · ' : ''}${t}</small></a>`; }).join('')}</div></div>`;
+  }).join('');
+}
+function ackBlock() {
+  const L = allSubjects().filter((s) => s.assign?.ack_needed);
+  if (!L.length) return '';
+  return `<div class="card mt16 ackcard"><b>📌 Your assignment list has been updated</b>
+    <div class="small muted" style="margin:6px 0 10px">Because attendance in ${L.map((s) => `<b style="color:var(--ink)">${esc(s.name)}</b>`).join(', ')} is below 75%, ${L[0].assign.extra} more assignment${L[0].assign.extra === 1 ? ' is' : 's are'} needed there before the exam. The assignments you already downloaded stay exactly the same. Kindly open the subject to see your updated count.</div>
+    <button class="btn sm pri" id="ackB">✓ I have read and understood</button></div>`;
+}
+function helpModal() {
+  const subs = allSubjects();
+  const m = modal(`<h2>Need help?</h2><p class="small muted" style="margin-top:-4px">Your message goes to the Academic Head. You will be contacted by the academic team.</p>
+    <label class="lb">What is it about?</label><select class="inp" id="hpR">${['Attendance looks wrong', 'I cannot open an assignment', 'Specialisation', 'Exam date', 'My result', 'I have completed my course — exam or certificate request', 'Other'].map((x) => `<option>${x}</option>`).join('')}</select>
+    <label class="lb">Subject (optional)</label><select class="inp" id="hpS"><option value="">—</option>${subs.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+    <label class="lb">Message</label><textarea class="inp" id="hpM" rows="3" maxlength="400" placeholder="A short note helps us sort it out faster."></textarea>
+    <div class="row mt16" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" id="hpGo">Send</button></div>`);
+  m.el.querySelector('[data-x]').onclick = m.close;
+  $('#hpGo', m.el).onclick = async () => {
+    try { await api('exam_help_request', { p_reason: $('#hpR', m.el).value, p_subject: $('#hpS', m.el).value || null, p_msg: $('#hpM', m.el).value.trim() || null }); m.close(); toast('Sent to the Academic Head. Thank you.', 'ok'); }
+    catch (e) { toast(errText(e), 'bad'); }
+  };
 }
 const NOW_ORDER = ['ready', 'scheduled', 'book', 'missed', 'requested', 'assignments', 'held', 'spec'];
 function canNowBlock() {
@@ -339,7 +380,7 @@ function subjectCard(c, s, i) {
       action = `<div class="small muted">Exams follow your course order. Book a date for <b style="color:var(--ink)">${esc(s.seq_block)}</b> first — then you can book this one too (for a later date).</div>`; break;
     case 'assignments':
       status = `<span class="pill warn">Assignments ${got}/${A.need} needed</span>`;
-      action = `<div class="small muted">${A.mode === 'submitted' ? 'Submit' : 'Get approved'} at least ${A.need} of ${A.req} assignments (${A.pct}%) to unlock this exam.</div>`; break;
+      action = `<div class="small muted">Please submit at least ${A.need} of ${A.req} assignments, with at least one from every level, to open this exam.${lvMiss(A) ? `<br><b style="color:var(--ink2)">${lvMiss(A)}</b>` : ''}</div>`; break;
     case 'held':
       status = `<span class="pill warn">⏳ Result on hold</span>`;
       action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result and certificate unlock once you submit all ${A.req} assignments — ${A.submitted || 0} of ${A.req} submitted so far.</div><button class="btn sm" data-book="${s.id}">🔁 Book a retake</button>`; break;
@@ -355,6 +396,12 @@ function subjectCard(c, s, i) {
     case 'locked':
       status = `<span class="pill">🔒 Locked</span>`;
       action = `<div class="small muted">Not open for your batch yet.</div>`; break;
+    case 'feed':
+      status = `<span class="pill">🔒 Locked for now</span>`;
+      action = `<div class="small muted">${esc(s.lock_note || 'Please contact your faculty or the Academic Head.')}</div>`; break;
+    case 'noexam':
+      status = `<span class="pill">No exam</span>`;
+      action = `<div class="small muted">${esc(s.lock_note || 'For your information only — there is no exam for this on the portal.')}</div>`; break;
     case 'preparing':
       status = `<span class="pill warn">Paper being prepared</span>`;
       action = `<div class="small muted">This paper isn't ready yet. You'll be informed.</div>`; break;
@@ -365,9 +412,9 @@ function subjectCard(c, s, i) {
   const allIn = A.req > 0 && (A.submitted || 0) >= A.req;
   const assignLine = A.req > 0 && s.state !== 'exempt'
     ? `<a class="asgbtn ${allIn ? 'done' : 'glow'}" href="${ahref}"><span class="ai">${allIn ? '✓' : '⬇'}</span><span><b>${allIn ? 'Assignments all submitted' : 'Download assignments'}</b>
-        <small>${A.submitted || 0} of ${A.req} submitted · ${A.approved || 0} approved${A.redo ? ` · ${A.redo} to redo` : ''}${allIn ? '' : ' · all needed for your result'}</small></span><span class="go">›</span></a>` : '';
+        <small>${A.submitted || 0} of ${A.req} submitted · ${A.approved || 0} approved${A.redo ? ` · ${A.redo} to redo` : ''}${lvMiss(A) ? ' · ' + lvMiss(A) : allIn ? '' : ' · all needed for your result'}</small></span><span class="go">›</span></a>` : '';
   const on = ['ready', 'live', 'book', 'missed'].includes(s.state);
-  return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing'].includes(s.state) ? 'locked' : ''}">
+  return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing', 'feed', 'noexam'].includes(s.state) ? 'locked' : ''}">
     ${swTile(s.id, s.short || s.name.slice(0, 2))}
     <div class="body"><div class="seq">STEP ${i + 1}</div><div class="spread"><h4>${esc(s.name)}</h4>${best}</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 12px">${status}</div>${action}${assignLine}</div></div>`;
@@ -515,7 +562,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=20'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=21'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -683,8 +730,7 @@ function startExam(p, course) {
       <div class="xsub">${swTile(p.subject.id, course.subjects.find((s) => s.id === p.subject.id)?.short || 'Q')}
         <div style="min-width:0"><b>${esc(p.subject.name)}</b><div class="small muted">${cap(p.level)} level · ${esc(ME.student.name)}</div></div></div>
       <div style="flex:1"></div>
-      <div class="xbadges"><span class="xb mic" id="xbMic" title="Your microphone is on. Speech during the exam is recorded for review."><i></i><span class="t">Mic on</span></span>
-        <span class="xb rec" id="xbRec" title="Speech was heard — a short clip is being recorded for the Academic Head"><b></b>REC</span>
+      <div class="xbadges">
 </div>
       <button class="btn sm ghost rulesbtn" id="rulesB" title="Exam rules (the timer keeps running)">Rules</button>
       <div class="timer" id="tmr">--:--</div>
@@ -695,7 +741,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=20').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=21').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -938,7 +984,7 @@ function startExam(p, course) {
         const q = X.idx + 1;
         api('exam_voice', { p_attempt: p.attempt_id, p_q: q, p_path: null, p_kind: 'voice', p_secs: null, p_bytes: null, p_level: info.level }).catch(() => {});
         if (nClips < maxClips && cl?.fire({ q })) { nClips++; try { localStorage.setItem(vKey, String(nClips)); } catch {} }
-        toast('🎙 Voice heard — please stay silent. A short clip is recorded for the academic team to review.', 'bad');
+
       },
     });
   };
@@ -1275,7 +1321,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=20'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=21'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

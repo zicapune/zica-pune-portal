@@ -694,3 +694,17 @@ a.kpi-a,.kpi>a{display:block}
 @media (prefers-reduced-motion:reduce){.wapanel,.tspot,.tcard{transition:none}}
 .tbl th{position:sticky;top:0;z-index:1}
 .anav a{position:relative}
+
+/* ===== v21 · progress strip, ledger locks ===== */
+.pstrip{margin-top:12px;border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:linear-gradient(160deg,color-mix(in srgb,var(--a1) 7%,var(--card)),var(--bg2))}
+.pstrip .prog{margin:10px 0 12px}
+.psteps{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+.pstep{flex:0 0 auto;min-width:132px;max-width:190px;scroll-snap-align:start;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--card);position:relative;transition:transform .15s,border-color .2s}
+.pstep:hover{transform:translateY(-2px);border-color:var(--a1)}
+.pstep b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:14px}
+.pstep small{display:block;font-size:11.5px;color:var(--mute);margin-top:3px;line-height:1.35}
+.pstep .pd{position:absolute;left:12px;top:15px;width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.pstep.done{border-color:rgba(34,197,94,.45)} .pstep.done .pd{background:var(--ok)}
+.pstep.open{border-color:color-mix(in srgb,var(--a1) 60%,var(--line));box-shadow:0 0 18px color-mix(in srgb,var(--a1) 22%,transparent)} .pstep.open .pd,.pstep.run .pd{background:var(--a1);box-shadow:0 0 8px var(--a1)}
+.pstep.wait .pd{background:#f59e0b} .pstep.lock{opacity:.8} .pstep.lock .pd{background:var(--bad)} .pstep.later{opacity:.6}
+.ackcard{border-color:#f59e0b;background:linear-gradient(135deg,rgba(245,158,11,.10),transparent)}

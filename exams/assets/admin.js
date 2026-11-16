@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=20';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=21';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -35,7 +35,7 @@ function bindTop() {
   $$('.tourbtn').forEach((b) => (b.onclick = () => runTour(true)));
 }
 async function runTour(force) {
-  const T = await import('./tour.js?v=20');
+  const T = await import('./tour.js?v=21');
   const key = 'adm_' + (ME?.me || ''), steps = META?.is_admin ? T.ADMIN_TOUR : T.STAFF_TOUR;
   if (META?.is_admin && force && S.tab !== 'dash') { location.hash = '#/dash'; setTimeout(() => T.startTour(key, steps, { force }), 1400); return; }
   T.startTour(key, steps, { force });
@@ -99,7 +99,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="lwall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
-  let mod; try { mod = await import('./live.js?v=20'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=21'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -259,7 +259,7 @@ async function dash() {
     $$('[data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu); }));
     $$('[data-act]').forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, draw)));
     $('#grpX').onclick = () => groupExam(draw);
-    heldCard(); planCard(draw);
+    heldCard(); planCard(draw); feedCard();
     if (!S.toured) { S.toured = true; setTimeout(() => { if (!$('.ov') && !$('.drawer')) runTour(false); }, 1000); }
   };
   await draw();
@@ -439,7 +439,7 @@ function cellModal(s, sid, after) {
     <div class="row" style="gap:6px;flex-wrap:wrap">${c.best ? `<span class="pill ${c.best.p ? 'ok' : 'bad'}">Best ${esc(c.best.g)} · ${c.best.sc}/${c.best.mx} · ${c.best.lv}</span>` : ''}
       <span class="pill">${c.n} of ${c.ma} attempts used</span>${c.src ? `<span class="pill">source: ${esc(c.src)}</span>` : ''}</div>
     ${c.ar ? `<div class="asgline mt16"><b>Assignments</b><span>${asgTxt(c)}</span><div class="prog"><i style="width:${Math.round(((+String(c.as || '0/0').split('/')[1] || 0) / c.ar) * 100)}%"></i></div></div>` : ''}
-    ${c.ar ? `<button class="btn sm mt8" data-brief>⬇ Assignment briefs (PDF)</button>` : ''}
+    ${c.ar ? `<button class="btn sm mt8" data-brief>⬇ Assignment briefs (PDF)</button> <button class="btn sm mt8" data-min title="Lets this student book the exam without the assignment minimum. Logged with your name and time.">✓ Mark bare minimum complete</button>` : ''}
     ${c.live ? '' : `<div class="setnow mt16"><div><b>${IC.cal} Schedule this exam</b><span>Open it now, or pick a date and time — ${esc(s.name.split(' ')[0])} gets an email.</span></div><button class="btn pri" data-setx>Set exam</button></div>`}
     <label class="lb">Exam access</label>
     <div class="row"><button class="btn ${c.u ? 'ok' : ''}" data-u="1">Unlocked</button><button class="btn ${!c.u ? 'bad' : ''}" data-u="0">Locked</button></div>
@@ -457,8 +457,10 @@ function cellModal(s, sid, after) {
   $$('[data-u]', m.el).forEach((b) => (b.onclick = () => { u = b.dataset.u === '1'; $$('[data-u]', m.el).forEach((x) => (x.className = 'btn ' + (x.dataset.u === '1' ? (u ? 'ok' : '') : (!u ? 'bad' : '')))); }));
   m.el.querySelector('[data-x]').onclick = m.close;
   m.el.querySelector('[data-rep]')?.addEventListener('click', () => { m.close(); reportModal(c.best.id); });
+  m.el.querySelector('[data-min]')?.addEventListener('click', () => { if (!confirm(`Mark the assignment minimum as complete for ${s.name} · ${subjName(sid)}?`)) return; m.close();
+    run(() => rpc('exam_admin_assign_skip', { p_student: s.id, p_subject: sid, p_skip: true }), 'Marked — the exam is open for booking', after); });
   m.el.querySelector('[data-brief]')?.addEventListener('click', async (e) => { e.target.disabled = true;
-    try { const d = await rpc('exam_admin_assignments', { p_subject: sid }); const { briefPDF } = await import('./pdf.js?v=20'); await briefPDF({ subject: d.subject, items: d.items, student: s }); }
+    try { const d = await rpc('exam_admin_assignments', { p_subject: sid }); const { briefPDF } = await import('./pdf.js?v=21'); await briefPDF({ subject: d.subject, items: d.items, student: s }); }
     catch (er) { toast(errText(er), 'bad'); } e.target.disabled = false; });
   m.el.querySelector('[data-setx]')?.addEventListener('click', () => { m.close();
     const subs = Object.entries(s.cells || {}).map(([id, x]) => ({ id, name: subjName(id), state: x.live ? 'live' : x.best ? (x.best.p ? 'done' : 'book') : x.u ? 'ready' : 'locked', used: x.n || 0, max_attempts: x.ma || 2, done_external: !!x.ext }));
@@ -1041,7 +1043,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=20');
+        const { practicalPDF } = await import('./pdf.js?v=21');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -1137,8 +1139,8 @@ async function groupExam(after, pre) {
 
 // ================================================================= Reports · schedule PDF + WhatsApp · notice-board results · downloads
 const dIn = (days) => istLocal(new Date(Date.now() + days * 864e5).toISOString(), 'date');
-const docs = () => import('./docs.js?v=20');
-const waMod = () => import('./wa.js?v=20');
+const docs = () => import('./docs.js?v=21');
+const waMod = () => import('./wa.js?v=21');
 // after anything is scheduled: WhatsApp draft for those slot(s)
 async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
   try {
@@ -1150,6 +1152,28 @@ async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
   } catch (e) { console.warn(e); }
 }
 
+// Subject Ledger feed: status, refresh, and the switch that makes the ledger decide who can book
+async function feedCard(R) {
+  if (!META.is_admin || !$('.kpi')) return;
+  try { R = R || await rpc('exam_admin_feed_status'); } catch { return; }
+  let el = $('#feedCard'); if (!el) { el = document.createElement('div'); el.id = 'feedCard'; el.className = 'card mt16'; $('.kpi').after(el); }
+  const I = R.last_ok?.info || {}, list = (a, n = 12) => (a || []).slice(0, n).map(esc).join(', ') + ((a || []).length > n ? ` … +${a.length - n} more` : '');
+  el.innerHTML = `<div class="spread"><div><h3 style="margin:0">Subject Ledger</h3><div class="small muted">${R.last_ok ? `Last read ${fmtDT(R.last_ok.at)} · feed built ${esc(I.feed_time || '—')} · ${R.last_ok.n} lines` : 'Not read yet — paste ExamSync v11, then press Refresh.'}${R.refresh ? ' · <b>refresh queued (up to 5 min)</b>' : ''}</div></div>
+      <div class="row" style="gap:8px"><button class="btn sm" id="fdR">↻ Refresh from Subject Ledger</button>
+      <button class="btn sm ${R.enforce ? '' : 'pri'}" id="fdE" ${R.last_ok ? '' : 'disabled'}>${R.enforce ? 'Ledger rules are ON · turn off' : 'Turn ON ledger rules'}</button></div></div>
+    ${R.last_err ? `<div class="notice small mt8" style="border-color:var(--bad)">⚠ The ledger could not be read at ${fmtDT(R.last_err.at)} (${esc(R.last_err.error)}). The last good copy is still in use; no student is affected.</div>` : ''}
+    ${R.last_ok ? `<div class="row mt8" style="gap:6px;flex-wrap:wrap"><span class="pill ok">${I.matched} students matched</span><span class="pill">${I.unlocked} exams unlocked · ${I.locked} locked</span>
+      <span class="pill ${I.not_on_portal?.length ? 'warn' : ''}">${I.not_on_portal?.length || 0} in ledger, not on portal</span><span class="pill ${I.not_in_feed?.length ? 'warn' : ''}">${I.not_in_feed?.length || 0} active on portal, not in ledger</span>
+      ${I.unknown_subjects?.length ? `<span class="pill bad">${I.unknown_subjects.length} subject names not recognised</span>` : ''}</div>
+      <details class="small mt8"><summary class="muted">Details</summary>
+        ${I.unknown_subjects?.length ? `<p><b>Subject names the portal does not recognise</b> (their exams stay locked until matched): ${list(I.unknown_subjects, 40)}</p>` : ''}
+        <p><b>In the ledger, not on the portal:</b> ${list(I.not_on_portal, 40) || '—'}</p><p><b>Active on the portal, not in the ledger</b> (locked once rules are ON): ${list(I.not_in_feed, 60) || '—'}</p>
+        ${I.unknown_programmes?.length ? `<p><b>Programme names that differ from the portal:</b> ${list(I.unknown_programmes, 30)}</p>` : ''}</details>` : ''}
+    <div class="tiny dim mt8">${R.enforce ? 'ON: a student can book only what the ledger shows as Unlocked. Your own unlocks and “Set exam” still win.' : 'OFF: the ledger is only being read. Booking works as before until you turn the rules on.'}</div>`;
+  $('#fdR').onclick = async () => { try { feedCard(await rpc('exam_admin_feed_set', { p_refresh: true })); toast('Refresh queued — the ledger is read within 5 minutes', 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#fdE').onclick = async () => { if (!confirm(R.enforce ? 'Turn the ledger rules OFF? Booking goes back to the old rules.' : `Turn the ledger rules ON?\n\n${I.not_in_feed?.length || 0} active portal students are not in the ledger and will be locked, and ${I.locked || 0} subject lines are Locked.`)) return;
+    try { feedCard(await rpc('exam_admin_feed_set', { p_enforce: !R.enforce })); } catch (e) { toast(errText(e), 'bad'); } };
+}
 async function waForBookings(ids) { try { const sl = await rpc('exam_admin_booking_slots', { p_ids: ids.map(Number) }); if (sl.length) waForSlots(sl, { title: 'Approved dates · message' }); } catch {} }
 async function reports() {
   frame(`<div class="phead spread"><div><h1>Reports & downloads</h1><div class="small muted">A4 PDFs in the ZICA print style, WhatsApp drafts for your groups, and Excel downloads.</div></div></div>

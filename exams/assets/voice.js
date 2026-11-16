@@ -108,9 +108,9 @@ export async function uploadClip(sb, api, attemptId, c) {
   if (c.blob.size > 1500000) return false;
   for (let i = 0; i < 3; i++) {
     try {
-      const { error } = await sb.storage.from('exam-clips').upload(path, c.blob, { contentType: c.blob.type.split(';')[0], upsert: false });
-      if (error) throw error;
-      await api('exam_voice', { p_attempt: attemptId, p_q: c.q || null, p_path: path, p_kind: c.kind, p_secs: c.secs, p_bytes: c.blob.size, p_level: null });
+      const { data, error } = await sb.functions.invoke(`clip-up?path=${encodeURIComponent(path)}&q=${c.q || 0}&kind=${c.kind}&secs=${c.secs || 0}`,
+        { body: c.blob, headers: { 'Content-Type': c.blob.type.split(';')[0] } });
+      if (error || !data?.ok) throw error || new Error('upload');
       return true;
     } catch (e) { await new Promise((r) => setTimeout(r, 3000 * (i + 1))); }
   }
