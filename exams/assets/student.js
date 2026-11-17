@@ -1,10 +1,10 @@
 // ZICA Pune Portal · Student exam app
 import { sb, rpc, DEMO, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=23';
-import { Cam, watchFaces } from './proctor.js?v=23';
-import { mock } from './demo.js?v=23';
-import { voiceWatch, clipper, uploadClip } from './voice.js?v=23';
-import { startTour, STUDENT_TOUR } from './tour.js?v=23';
+         fmtDate, fmtTime, fmtRange, fmtDT, mmss, initials, CFG, swTile, SW } from './common.js?v=24';
+import { Cam, watchFaces } from './proctor.js?v=24';
+import { mock } from './demo.js?v=24';
+import { voiceWatch, clipper, uploadClip } from './voice.js?v=24';
+import { startTour, STUDENT_TOUR } from './tour.js?v=24';
 const tourKey = () => 'stu_' + (ME?.student?.email || ME?.email || 'x');
 const TOUR_BTN = `<button class="btn sm ghost tourbtn" data-tour="tourbtn" title="Show me around"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9M12 17h.01"/></svg> Tour</button>`;
 
@@ -217,7 +217,7 @@ function progressStrip() {
       <div class="cps">${c.subjects.map((s, i) => { const [k, t] = STRIP[s.state] || ['later', s.state]; const f = s.feed || {}, A = s.assign || {};
         const batch = { done: 'lectures completed', ongoing: 'batch running' }[String(f.batch || '').toLowerCase()] || (f.batch ? String(f.batch).toLowerCase() : '');
         const ex = s.best?.passed ? `Exam passed · <b>${esc(s.best.grade || '')}</b>${s.best.percent != null ? ` (${Math.round(s.best.percent)}%)` : ''}`
-          : s.state === 'held' ? `Exam written · result on hold until all ${A.req} assignments are submitted (${A.submitted || 0} so far)`
+          : s.state === 'held' ? `Exam written · result shows after ${A.need || A.req} of ${A.req} assignments, one from every level (${A.submitted || 0} so far)`
           : s.state === 'assignments' ? `Exam opens after ${Math.max(1, (A.need || 0) - (A.submitted || 0))} more assignment(s)${lvMiss(A) ? ' · ' + lvMiss(A) : ''}`
           : s.state === 'feed' || s.state === 'noexam' ? esc(s.lock_note || t)
           : s.best && !s.best.passed ? `Not passed yet · ${t}` : capW(t);
@@ -397,7 +397,7 @@ function subjectCard(c, s, i) {
       action = `<div class="small muted">Please submit at least ${A.need} of ${A.req} assignments, with at least one from every level, to open this exam.${lvMiss(A) ? `<br><b style="color:var(--ink2)">${lvMiss(A)}</b>` : ''}</div>`; break;
     case 'held':
       status = `<span class="pill warn">⏳ Result on hold</span>`;
-      action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result and certificate unlock once you submit all ${A.req} assignments — ${A.submitted || 0} of ${A.req} submitted so far.</div><button class="btn sm" data-book="${s.id}">🔁 Book a retake</button>`; break;
+      action = `<div class="small muted" style="margin-bottom:8px">Exam written. Your result shows once you submit at least ${A.need || A.req} of ${A.req} assignments, with at least one from every level — ${A.submitted || 0} submitted so far.${lvMiss(A) ? `<br><b style="color:var(--ink2)">${lvMiss(A)}</b>` : ''}</div><button class="btn sm" data-book="${s.id}">🔁 Book a retake</button>`; break;
     case 'exempt':
       status = `<span class="pill ok">✓ Completed earlier</span>`;
       action = `<div class="small muted">${esc(s.ext_note || 'Marked complete by the Academic Head.')}</div>`; break;
@@ -426,7 +426,7 @@ function subjectCard(c, s, i) {
   const allIn = A.req > 0 && (A.submitted || 0) >= A.req;
   const assignLine = A.req > 0 && s.state !== 'exempt'
     ? `<a class="asgbtn ${allIn ? 'done' : 'glow'}" href="${ahref}"><span class="ai">${allIn ? '✓' : '⬇'}</span><span><b>${allIn ? 'Assignments all submitted' : 'Download assignments'}</b>
-        <small>${A.submitted || 0} of ${A.req} submitted · ${A.approved || 0} approved${A.redo ? ` · ${A.redo} to redo` : ''}${lvMiss(A) ? ' · ' + lvMiss(A) : allIn ? '' : ' · all needed for your result'}</small></span><span class="go">›</span></a>` : '';
+        <small>${A.submitted || 0} of ${A.req} submitted · ${A.approved || 0} approved${A.redo ? ` · ${A.redo} to redo` : ''}${A.extra ? ` · <b style="color:#f59e0b">+${A.extra} extra (attendance below 75%)</b>` : ''}${lvMiss(A) ? ' · ' + lvMiss(A) : ''}</small></span><span class="go">›</span></a>` : '';
   const on = ['ready', 'live', 'book', 'missed'].includes(s.state);
   return `<div class="scard ${on ? 'ready' : ''} ${['locked', 'sequence', 'preparing', 'feed', 'noexam'].includes(s.state) ? 'locked' : ''}">
     ${swTile(s.id, s.short || s.name.slice(0, 2))}
@@ -576,7 +576,7 @@ function submitModal(a, done) {
 }
 async function printBriefs(sj, items) {
   const t = toast('Preparing your PDF…');
-  try { const { briefPDF } = await import('./pdf.js?v=23'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
+  try { const { briefPDF } = await import('./pdf.js?v=24'); const f = await briefPDF({ subject: sj, items, student: ME.student }); toast('Downloaded ' + f, 'ok'); }
   catch (e) { toast(errText(e), 'bad'); }
 }
 
@@ -755,7 +755,7 @@ function startExam(p, course) {
     <div class="mobbar"><button class="btn" id="mPrev">‹ Prev</button><button class="btn" id="mPal">Palette</button><button class="btn pri" id="mNext">Save & Next ›</button></div>
   </div>`;
   cam.attach($('#pvid'));
-  if (p.live_key && !DEMO) import('./live.js?v=23').then(({ studentLive }) => {
+  if (p.live_key && !DEMO) import('./live.js?v=24').then(({ studentLive }) => {
     const stop = studentLive(p.live_key, () => cam.stream, (on) => {
       X.talking = on;
       let b = $('#talkB'); if (!b) { b = document.createElement('div'); b.id = 'talkB'; b.className = 'talkbar'; b.textContent = '🔊 The Academic Head is speaking to you'; document.body.appendChild(b); }
@@ -1335,7 +1335,7 @@ async function pracView(id) {
         <label class="lb">Note to the examiner (optional)</label><textarea class="inp" id="pnt" rows="2" maxlength="1000">${esc(d.submit_note || '')}</textarea>
         <button class="btn pri mt16" id="psub">${d.submitted_at ? 'Update submission' : 'Submit practical'}</button>` : ''}</div>
   `, P.family);
-  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=23'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
+  $('#pdl').onclick = async () => { toast('Preparing your PDF…'); try { const { practicalPDF } = await import('./pdf.js?v=24'); toast('Downloaded ' + (await practicalPDF(d)), 'ok'); } catch (e) { toast(errText(e), 'bad'); } };
   $$('[data-cp]').forEach((b) => (b.onclick = () => {
     const mm = modal(`<h2>Check-in ${+b.dataset.cp + 1}</h2><p class="muted small">Upload a screenshot to Drive (Anyone with the link can view) and paste the link.</p>
       <input class="inp" id="cpl" placeholder="https://drive.google.com/…"><div class="row mt24" style="justify-content:flex-end"><button class="btn ghost" data-x>Cancel</button><button class="btn pri" data-ok>Send</button></div>`);

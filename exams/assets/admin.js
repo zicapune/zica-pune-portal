@@ -1,6 +1,6 @@
 // ZICA Pune Portal · Admin panel
 import { sb, rpc, $, $$, esc, toast, modal, confirmBox, errText, device, topBar, signInScreen, signOut,
-         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=23';
+         fmtDate, fmtTime, fmtRange, fmtDT, ago, mmss, initials } from './common.js?v=24';
 
 const root = $('#admin');
 let META = null, ME = null, timer = null;
@@ -35,7 +35,7 @@ function bindTop() {
   $$('.tourbtn').forEach((b) => (b.onclick = () => runTour(true)));
 }
 async function runTour(force) {
-  const T = await import('./tour.js?v=23');
+  const T = await import('./tour.js?v=24');
   const key = 'adm_' + (ME?.me || ''), steps = META?.is_admin ? T.ADMIN_TOUR : T.STAFF_TOUR;
   if (META?.is_admin && force && S.tab !== 'dash') { location.hash = '#/dash'; setTimeout(() => T.startTour(key, steps, { force }), 1400); return; }
   T.startTour(key, steps, { force });
@@ -99,7 +99,7 @@ async function wall() {
       <div class="row" style="gap:8px"><button class="btn" id="wR">↻ Refresh</button><button class="btn pri" id="wAll">🎤 Hold to talk to all</button></div></div>
     <div class="lwall mt16" id="wg"><div class="spin"></div></div>
     <p class="tiny dim mt16">🎙 on a tile = times speech was heard in that exam; the clips play in the student's report. Students see a “being watched” badge while you view them.</p>`);
-  let mod; try { mod = await import('./live.js?v=23'); } catch (e) { return toast('Live view could not load.', 'bad'); }
+  let mod; try { mod = await import('./live.js?v=24'); } catch (e) { return toast('Live view could not load.', 'bad'); }
   const tiles = {};
   const upd = (key, u) => {
     const t = tiles[key]; if (!t) return;
@@ -259,7 +259,7 @@ async function dash() {
     $$('[data-stu]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu); }));
     $$('[data-act]').forEach((b) => (b.onclick = () => attemptAction(b.dataset.a, b.dataset.act, draw)));
     $('#grpX').onclick = () => groupExam(draw);
-    heldCard(); planCard(draw); feedCard();
+    heldCard(); planCard(draw); feedCard(); loginsCard();
     if (!S.toured) { S.toured = true; setTimeout(() => { if (!$('.ov') && !$('.drawer')) runTour(false); }, 1000); }
   };
   await draw();
@@ -460,7 +460,7 @@ function cellModal(s, sid, after) {
   m.el.querySelector('[data-min]')?.addEventListener('click', () => { if (!confirm(`Mark the assignment minimum as complete for ${s.name} · ${subjName(sid)}?`)) return; m.close();
     run(() => rpc('exam_admin_assign_skip', { p_student: s.id, p_subject: sid, p_skip: true }), 'Marked — the exam is open for booking', after); });
   m.el.querySelector('[data-brief]')?.addEventListener('click', async (e) => { e.target.disabled = true;
-    try { const d = await rpc('exam_admin_assignments', { p_subject: sid }); const { briefPDF } = await import('./pdf.js?v=23'); await briefPDF({ subject: d.subject, items: d.items, student: s }); }
+    try { const d = await rpc('exam_admin_assignments', { p_subject: sid }); const { briefPDF } = await import('./pdf.js?v=24'); await briefPDF({ subject: d.subject, items: d.items, student: s }); }
     catch (er) { toast(errText(er), 'bad'); } e.target.disabled = false; });
   m.el.querySelector('[data-setx]')?.addEventListener('click', () => { m.close();
     const subs = Object.entries(s.cells || {}).map(([id, x]) => ({ id, name: subjName(id), state: x.live ? 'live' : x.best ? (x.best.p ? 'done' : 'book') : x.u ? 'ready' : 'locked', used: x.n || 0, max_attempts: x.ma || 2, done_external: !!x.ext }));
@@ -1043,7 +1043,7 @@ async function pracPapers() {
       toast('Preparing the PDF…');
       try { const d = await rpc('exam_admin_prac_option', { p_option: +b.dataset.prev });
         const now = new Date();
-        const { practicalPDF } = await import('./pdf.js?v=23');
+        const { practicalPDF } = await import('./pdf.js?v=24');
         await practicalPDF({ ...d, level: 'medium', started_at: now.toISOString(), deadline_at: new Date(now.getTime() + (d.paper.window_min || 480) * 60000).toISOString(),
           student: { name: 'Sample Student', code: 'PREVIEW' } });
       } catch (e) { toast(errText(e), 'bad'); } }));
@@ -1139,8 +1139,8 @@ async function groupExam(after, pre) {
 
 // ================================================================= Reports · schedule PDF + WhatsApp · notice-board results · downloads
 const dIn = (days) => istLocal(new Date(Date.now() + days * 864e5).toISOString(), 'date');
-const docs = () => import('./docs.js?v=23');
-const waMod = () => import('./wa.js?v=23');
+const docs = () => import('./docs.js?v=24');
+const waMod = () => import('./wa.js?v=24');
 // after anything is scheduled: WhatsApp draft for those slot(s)
 async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
   try {
@@ -1153,6 +1153,27 @@ async function waForSlots(ids, { title = 'Exam schedule' } = {}) {
 }
 
 // Subject Ledger feed: status, refresh, and the switch that makes the ledger decide who can book
+// who has logged in — for the Academic Head only
+async function loginsCard() {
+  if (!META.is_admin || !$('.kpi')) return;
+  let L; try { L = await rpc('exam_admin_logins'); } catch { return; }
+  let el = $('#loginCard'); if (!el) { el = document.createElement('div'); el.id = 'loginCard'; el.className = 'card mt16'; ($('#feedCard') || $('.kpi')).after(el); }
+  const ago = (t) => { const m = Math.round((Date.now() - new Date(t)) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : fmtDate(t); };
+  const tile = (k, n, label, list, fmt) => `<button class="lgt ${S.lg === k ? 'on' : ''}" data-lg="${k}"><b>${n}</b><small>${label}</small></button>`;
+  const lists = { today: L.today, week: L.week, never: L.never };
+  el.innerHTML = `<div class="spread"><h3 style="margin:0">Student logins</h3><span class="small muted">${L.ever} students have logged in at least once · only you see this</span></div>
+    <div class="lgts mt8">${tile('today', L.today.length, 'Logged in today')}${tile('week', L.week.length, 'This week')}${tile('never', L.never.length, 'Active, never logged in')}</div>
+    <div id="lgL" class="mt8"></div>`;
+  const draw = () => {
+    const k = S.lg; const box = $('#lgL', el); if (!k) { box.innerHTML = ''; return; }
+    const l = lists[k];
+    box.innerHTML = l.length ? `<div class="lgnames">${l.map((x) => `<a href="#" data-stu="${x.id}">${esc(x.name)}<i>${k === 'never' ? (x.invited ? 'invited ' + fmtDate(x.invited) : 'not invited yet') : ago(x.at) + (x.n ? ` · ${x.n} login${x.n === 1 ? '' : 's'}` : '')}</i></a>`).join('')}</div>` : '<div class="small muted">Nobody yet.</div>';
+    $$('[data-stu]', box).forEach((a) => (a.onclick = (e) => { e.preventDefault(); studentDrawer(a.dataset.stu, () => {}); }));
+    $$('[data-lg]', el).forEach((b) => b.classList.toggle('on', b.dataset.lg === S.lg));
+  };
+  $$('[data-lg]', el).forEach((b) => (b.onclick = () => { S.lg = S.lg === b.dataset.lg ? null : b.dataset.lg; draw(); }));
+  draw();
+}
 async function feedCard(R) {
   if (!META.is_admin || !$('.kpi')) return;
   try { R = R || await rpc('exam_admin_feed_status'); } catch { return; }
